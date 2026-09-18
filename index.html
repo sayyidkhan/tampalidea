@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="TampalIdea contributor and ownership tracker">
+  <meta name="robots" content="noindex,nofollow">
+  <title>TampalIdea — Ownership tracker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">Project stewardship</p>
+      <h1>TampalIdea</h1>
+      <p class="lede">A simple, consent-first record of contributors and current ownership.</p>
+    </header>
+
+    <section class="card project-card">
+      <div><label for="project-name">Project</label><input id="project-name" value="Untitled TampalIdea project" maxlength="100"></div>
+      <button id="save-project" class="secondary">Save project</button>
+    </section>
+
+    <section class="summary" aria-label="Current ownership">
+      <div><span>Contributors</span><strong id="contributor-count">0</strong></div>
+      <div><span>Allocated ownership</span><strong id="ownership-total">0%</strong></div>
+      <div><span>Status</span><strong id="ownership-status">Add contributors</strong></div>
+    </section>
+
+    <section class="grid">
+      <form id="contributor-form" class="card" autocomplete="off">
+        <h2>Add contributor</h2>
+        <label for="full-name">Full name <em>*</em></label><input id="full-name" required maxlength="100" placeholder="e.g. Aisha Rahman">
+        <label for="role">Role or contribution <em>*</em></label><input id="role" required maxlength="140" placeholder="e.g. Product design">
+        <label for="ownership">Ownership % <small>Optional — blanks share remaining equity evenly.</small></label><input id="ownership" type="number" min="0" max="100" step="0.01" placeholder="e.g. 25">
+        <label for="whatsapp-id">WhatsApp ID <small>Optional; saved only with consent.</small></label><input id="whatsapp-id" maxlength="80" placeholder="Only an ID you provide">
+        <label class="check"><input id="whatsapp-consent" type="checkbox"> I confirm this person consented to storing this WhatsApp ID.</label>
+        <fieldset>
+          <legend>Record this ownership update</legend>
+          <label for="actor">Recorded by <em>*</em></label><input id="actor" required maxlength="100" placeholder="Your name">
+          <label for="reason">Reason <em>*</em></label><input id="reason" required maxlength="200" placeholder="e.g. Initial founder allocation">
+          <label class="check"><input id="confirmed" type="checkbox"> I confirm this ownership record is ready to save.</label>
+        </fieldset>
+        <p id="form-error" class="error" role="alert"></p><button type="submit">Add contributor</button>
+      </form>
+
+      <section class="card">
+        <div class="section-heading"><div><h2>Current ownership</h2><p>Percentages always total 100%.</p></div><button id="clear-project" class="danger">Start over</button></div>
+        <div id="contributors" class="contributors"><p class="empty">No contributors yet. Add the first person to start an ownership record.</p></div>
+      </section>
+    </section>
+
+    <section class="card"><h2>Append-only ownership history</h2><p class="muted">Each saved ownership change retains its recorded values. New entries never alter prior history.</p><div id="audit-history" class="audit-history"><p class="empty">No ownership changes recorded yet.</p></div></section>
+  </main>
+  <template id="contributor-template"><article class="contributor"><div><h3></h3><p class="role"></p><p class="whatsapp"></p></div><strong class="percentage"></strong></article></template>
+  <script src="ownership.js"></script><script src="app.js"></script>
+</body>
+</html>
