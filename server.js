@@ -20,6 +20,14 @@ const staticFiles = new Map([
 ]);
 
 function json(response, status, body) { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" }); response.end(JSON.stringify(body)); }
+function page(response) {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8")
+    .replace('<link rel="stylesheet" href="styles.css">', `<style>${fs.readFileSync(path.join(root, "styles.css"), "utf8")}</style>`)
+    .replace('<link rel="stylesheet" href="detail.css">', `<style>${fs.readFileSync(path.join(root, "detail.css"), "utf8")}</style>`)
+    .replace('<script src="app.js"></script>', `<script>${fs.readFileSync(path.join(root, "app.js"), "utf8")}</script>`);
+  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
+  response.end(html);
+}
 function authorised(request) {
   const header = request.headers.authorization || "";
   if (!header.startsWith("Bearer ")) return false;
@@ -84,8 +92,9 @@ const server = http.createServer(async (request, response) => {
       return fs.createReadStream(path.join(mediaDir, record.storage_key)).pipe(response);
     }
     const assetPath = pathname.replace(/^\/[a-z0-9-]+\/(app\.js|styles\.css|detail\.css|ownership\.js)$/, "/$1");
+    if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) return page(response);
     if (request.method === "GET" && staticFiles.has(assetPath)) { const [file, type] = staticFiles.get(assetPath); response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, file)).pipe(response); }
-    if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, "index.html")).pipe(response); }
+    if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) return page(response);
     return json(response, 404, { error: "Not found." });
   } catch (error) { return json(response, 400, { error: error.message || "Invalid request." }); }
 });
