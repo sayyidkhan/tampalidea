@@ -5,6 +5,7 @@
   const slug = isProject ? pathParts.at(-1) : null;
   const base = `/${(isProject ? pathParts.slice(0, -1) : pathParts).join("/")}`.replace(/\/$/, "");
   const api = (suffix) => `${base}/api${suffix}`;
+  document.querySelector(".wordmark").href = `${base}/`;
   const escape = (value) => String(value || "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const format = (units) => `${(Number(units) / 100).toFixed(2).replace(/\.00$/, "")}%`;
   function imageUrl(id) { return `${base || ""}/media/${id}`; }
