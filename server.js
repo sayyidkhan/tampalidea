@@ -100,6 +100,57 @@ function selectCover(project, attachmentId, input) {
   return projectRecord(db, project.slug);
 }
 
+function updateAttachment(project, attachmentId, input) {
+  const prior = project.attachments.find((asset) => asset.id === attachmentId);
+  if (!prior) throw new Error("Image not found for this project.");
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "").trim();
+  const sourceReference = String(input.sourceReference || "").trim();
+  const hasAltText = Object.hasOwn(input, "altText");
+  const hasCover = Object.hasOwn(input, "cover");
+  const altText = hasAltText ? String(input.altText || "").trim().slice(0, 240) : prior.altText;
+  if (!actor || !reason || !sourceReference || (!hasAltText && !hasCover)) throw new Error("actor, reason, sourceReference and an image change are required.");
+  if (actor.length > 100 || reason.length > 200 || sourceReference.length > 240 || (hasCover && typeof input.cover !== "boolean")) throw new Error("One or more fields are invalid.");
+  const timestamp = new Date().toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (input.cover === true) db.prepare("UPDATE attachments SET is_cover = 0 WHERE project_id = ?").run(project.id);
+    db.prepare("UPDATE attachments SET alt_text = ?, is_cover = ? WHERE id = ? AND project_id = ?").run(altText, Number(input.cover === true || prior.isCover), attachmentId, project.id);
+    db.prepare("UPDATE projects SET updated_at = ? WHERE id = ?").run(timestamp, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'attachment.updated', ?, ?, ?, ?, ?, ?)")
+      .run(project.id, actor, reason, sourceReference, JSON.stringify(prior), JSON.stringify({ attachmentId, altText, isCover: input.cover === true || (!hasCover && Boolean(prior.isCover)) }), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return projectRecord(db, project.slug);
+}
+
+function deleteAttachment(project, attachmentId, input) {
+  const prior = project.attachments.find((asset) => asset.id === attachmentId);
+  if (!prior) throw new Error("Image not found for this project.");
+  const stored = db.prepare("SELECT storage_key FROM attachments WHERE id = ? AND project_id = ?").get(attachmentId, project.id);
+  if (!stored) throw new Error("Image file record not found for this project.");
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "").trim();
+  const sourceReference = String(input.sourceReference || "").trim();
+  if (!actor || !reason || !sourceReference || actor.length > 100 || reason.length > 200 || sourceReference.length > 240) throw new Error("actor, reason and sourceReference are required.");
+  const timestamp = new Date().toISOString();
+  let nextCover = null;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM attachments WHERE id = ? AND project_id = ?").run(attachmentId, project.id);
+    if (prior.isCover) {
+      nextCover = db.prepare("SELECT id FROM attachments WHERE project_id = ? ORDER BY created_at DESC LIMIT 1").get(project.id)?.id || null;
+      if (nextCover) db.prepare("UPDATE attachments SET is_cover = 1 WHERE id = ?").run(nextCover);
+    }
+    db.prepare("UPDATE projects SET updated_at = ? WHERE id = ?").run(timestamp, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'attachment.deleted', ?, ?, ?, ?, ?, ?)")
+      .run(project.id, actor, reason, sourceReference, JSON.stringify(prior), JSON.stringify({ deletedAttachmentId: attachmentId, coverAttachmentId: nextCover }), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  fs.rmSync(path.join(mediaDir, stored.storage_key), { force: true });
+  return projectRecord(db, project.slug);
+}
+
 const server = http.createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   try {
@@ -129,6 +180,14 @@ const server = http.createServer(async (request, response) => {
       const project = projectRecord(db, coverMatch[1]);
       if (!project) return json(response, 404, { error: "Project not found." });
       return json(response, 200, { ok: true, project: selectCover(project, coverMatch[2], await parseBody(request)) });
+    }
+    const attachmentMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/attachments\/([0-9a-f-]{36})$/);
+    if ((request.method === "PATCH" || request.method === "DELETE") && attachmentMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      const project = projectRecord(db, attachmentMatch[1]);
+      if (!project) return json(response, 404, { error: "Project not found." });
+      const input = await parseBody(request);
+      return json(response, 200, { ok: true, project: request.method === "PATCH" ? updateAttachment(project, attachmentMatch[2], input) : deleteAttachment(project, attachmentMatch[2], input) });
     }
     const mediaMatch = pathname.match(/^\/media\/([0-9a-f-]{36})$/);
     if (request.method === "GET" && mediaMatch) {

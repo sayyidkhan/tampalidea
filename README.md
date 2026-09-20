@@ -23,6 +23,18 @@ printf '%s' '{"projectName":"Batam 100","actor":"Orin Forgekeeper","reason":"Fou
 
 `scripts/orin-upload-project-image.js` accepts a founder-authorised JSON object containing `slug`, `filename`, `mimeType`, `dataBase64`, `altText`, `actor`, `reason`, `sourceReference`, and optional `cover: true`. `scripts/orin-select-project-cover.js` accepts `slug`, `attachmentId`, `actor`, `reason`, and `sourceReference` to make an existing image the single project cover. Both require `TAMPALIDEA_AGENT_TOKEN`.
 
+## Agent change interface
+
+Any authorised agent can use `scripts/project-ledger-agent.js` with `TAMPALIDEA_AGENT_TOKEN`. It accepts an input JSON `action` of:
+
+- `details.replace` — replace a project’s detail sections and optional `appUrl` / `appLabel`.
+- `image.add` — attach an image using `dataBase64`, or a `filePath` within `/home/workspace`; the first image becomes the cover unless `cover: true` selects it.
+- `image.update` — update an image’s `altText` or set `cover: true`.
+- `image.setCover` — select an existing `attachmentId` as cover.
+- `image.delete` — remove an attachment; if it was the cover, the newest remaining image becomes the cover.
+
+Every request needs `slug`, `actor`, `reason`, and `sourceReference`, and creates an append-only audit event. The app never grants unauthenticated browser write access.
+
 ## Verify
 
 ```sh
