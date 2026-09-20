@@ -36,6 +36,10 @@ function setup(dataDir) {
       created_at TEXT NOT NULL
     ) STRICT;
   `);
+  const projectColumns = db.prepare("PRAGMA table_info(projects)").all();
+  if (!projectColumns.some(({ name }) => name === "details_json")) {
+    db.exec("ALTER TABLE projects ADD COLUMN details_json TEXT NOT NULL DEFAULT '[]'");
+  }
   return db;
 }
 
@@ -48,7 +52,7 @@ function projectRecord(db, slug) {
   const audit = rows(db, "SELECT event_type AS eventType, actor, reason, source_reference AS sourceReference, before_json AS beforeJson, after_json AS afterJson, created_at AS timestamp FROM audit_events WHERE project_id = ? ORDER BY id", project.id)
     .map((event) => ({ ...event, before: JSON.parse(event.beforeJson), after: JSON.parse(event.afterJson), beforeJson: undefined, afterJson: undefined }));
   const attachments = rows(db, "SELECT id, filename, mime_type AS mimeType, bytes, alt_text AS altText, created_at AS createdAt FROM attachments WHERE project_id = ? ORDER BY created_at DESC", project.id);
-  return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
+  return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, details: JSON.parse(project.details_json || "[]"), createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
 }
 
 function listProjects(db) {
@@ -85,6 +89,34 @@ function replaceComposition(db, input) {
   return projectRecord(db, slug);
 }
 
+function replaceDetails(db, input) {
+  if (!input || typeof input !== "object") throw new Error("Request body must be an object.");
+  const slug = projectId(input.slug || "");
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "").trim();
+  const sourceReference = String(input.sourceReference || "").trim();
+  const tagline = String(input.tagline || "").trim();
+  const description = String(input.description || "").trim();
+  if (!slug || !actor || !reason || !sourceReference) throw new Error("slug, actor, reason and sourceReference are required.");
+  if (actor.length > 100 || reason.length > 200 || sourceReference.length > 240 || tagline.length > 160 || description.length > 4_000) throw new Error("One or more fields are too long.");
+  if (!Array.isArray(input.details) || input.details.length > 12) throw new Error("details must contain up to 12 sections.");
+  const details = input.details.map((section) => ({ heading: String(section?.heading || "").trim(), body: String(section?.body || "").trim() }));
+  if (details.some(({ heading, body }) => !heading || !body || heading.length > 120 || body.length > 6_000)) throw new Error("Each detail needs a heading and body within the allowed length.");
+  const prior = projectRecord(db, slug);
+  if (!prior) throw new Error("Project not found.");
+  const timestamp = now();
+  const before = { tagline: prior.tagline, description: prior.description, details: prior.details };
+  const after = { tagline: tagline || prior.tagline, description: description || prior.description, details };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE projects SET tagline = ?, description = ?, details_json = ?, updated_at = ? WHERE id = ?").run(after.tagline, after.description, JSON.stringify(details), timestamp, prior.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'project.details.replaced', ?, ?, ?, ?, ?, ?)")
+      .run(prior.id, actor, reason, sourceReference, JSON.stringify(before), JSON.stringify(after), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return projectRecord(db, slug);
+}
+
 function importLegacy(db, dataDir) {
   const legacy = path.join(dataDir, "shared-compositions.json");
   if (!fs.existsSync(legacy) || db.prepare("SELECT COUNT(*) AS count FROM projects").get().count) return;
@@ -95,4 +127,4 @@ function importLegacy(db, dataDir) {
   }
 }
 
-module.exports = { importLegacy, listProjects, projectRecord, replaceComposition, setup };
+module.exports = { importLegacy, listProjects, projectRecord, replaceComposition, replaceDetails, setup };

@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { importLegacy, listProjects, projectRecord, replaceComposition, setup } = require("./database.js");
+const { importLegacy, listProjects, projectRecord, replaceComposition, replaceDetails, setup } = require("./database.js");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8808);
@@ -63,6 +63,11 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && pathname === "/api/projects/composition") {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
       return json(response, 200, { ok: true, project: replaceComposition(db, await parseBody(request)) });
+    }
+    const detailMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/details$/);
+    if (request.method === "POST" && detailMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      return json(response, 200, { ok: true, project: replaceDetails(db, { ...(await parseBody(request)), slug: detailMatch[1] }) });
     }
     const assetMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/attachments$/);
     if (request.method === "POST" && assetMatch) {
