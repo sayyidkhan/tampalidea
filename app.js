@@ -19,7 +19,7 @@
       offset += length;
       return circle;
     }).join("");
-    const legend = contributors.map((person, index) => `<li><i style="background:${colours[index % colours.length]}"></i><span>${escape(person.name)}</span><b>${format(person.ownership)}</b></li>`).join("");
+    const legend = contributors.map((person, index) => `<li><i style="background:${colours[index % colours.length]}"></i><span><strong>${escape(person.name)}</strong><small>${escape(person.role)}</small></span><b>${format(person.ownership)}</b></li>`).join("");
     return `<div class="ownership-chart"><svg viewBox="0 0 140 140" role="img" aria-label="Ownership distribution"><circle cx="70" cy="70" r="54" fill="none" stroke="#ddd8c8" stroke-width="20"/>${slices}<text x="70" y="66" text-anchor="middle">OWNERSHIP</text><text x="70" y="84" text-anchor="middle">100%</text></svg><ul>${legend}</ul></div>`;
   }
   function projectCard(project) {
@@ -34,10 +34,9 @@
     document.querySelector("#hero-action").textContent = "See project record ↓";
     document.querySelector("#hero-action").href = "#project-detail";
     const gallery = project.attachments.map((asset) => `<figure><img src="${imageUrl(asset.id)}" alt="${escape(asset.altText || asset.filename)}"><figcaption>${escape(asset.altText || asset.filename)}</figcaption></figure>`).join("") || '<p class="loading">No visual references attached yet.</p>';
-    const people = project.contributors.map((person) => `<li><span>${escape(person.name)}<small>${escape(person.role)}</small></span><b>${format(person.ownership)}</b></li>`).join("");
     const updates = project.audit.slice().reverse().map((event) => `<li><b>${escape(event.actor)}</b><span>${escape(event.reason)} · ${new Date(event.timestamp).toLocaleDateString()}</span></li>`).join("");
     const brief = project.details?.length ? `<section class="brief"><p class="kicker">Recovered project brief</p>${project.details.map((section) => `<article><h3>${escape(section.heading)}</h3><p>${escape(section.body).replace(/\n/g, "<br>")}</p></article>`).join("")}</section>` : "";
-    document.querySelector("#project-detail").innerHTML = `<div class="project-header"><p class="kicker">${escape(project.tagline || "Project brief")}</p><h2>The project record</h2><p>Updated ${new Date(project.updatedAt).toLocaleDateString()}</p></div><div class="gallery">${gallery}</div>${brief}<div class="ledger"><section><p class="kicker">Composition</p><h3>People behind it</h3>${ownershipChart(project.contributors)}<ul>${people}</ul></section><section><p class="kicker">Audit trail</p><h3>Recorded decisions</h3><ul class="updates">${updates || "<li><span>No updates yet.</span></li>"}</ul></section></div>`;
+    document.querySelector("#project-detail").innerHTML = `<div class="project-header"><p class="kicker">${escape(project.tagline || "Project brief")}</p><h2>The project record</h2><p>Updated ${new Date(project.updatedAt).toLocaleDateString()}</p></div><div class="gallery">${gallery}</div>${brief}<div class="ledger"><section><p class="kicker">Composition</p><h3>People behind it</h3>${ownershipChart(project.contributors)}</section><section><p class="kicker">Audit trail</p><h3>Recorded decisions</h3><ul class="updates">${updates || "<li><span>No updates yet.</span></li>"}</ul></section></div>`;
     document.querySelector("#project-detail").hidden = false;
   }
   async function start() {
