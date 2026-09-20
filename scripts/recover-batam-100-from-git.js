@@ -1,10 +1,23 @@
 "use strict";
 
 const path = require("node:path");
-const { replaceDetails, setup } = require("../database.js");
+const { replaceComposition, replaceDetails, setup } = require("../database.js");
 
 const dataDir = path.resolve(process.env.TAMPALIDEA_DATA_DIR || path.join(__dirname, "..", ".data"));
 const db = setup(dataDir);
+replaceComposition(db, {
+  projectName: "Batam 100",
+  slug: "batam-100",
+  actor: "Sayyid Khan",
+  reason: "Founder-confirmed Batam 100 ownership allocation",
+  sourceReference: "Owner SMS confirmation",
+  contributors: [
+    { name: "Hafidz", role: "Co-owner", ownership: 25 },
+    { name: "Jazli", role: "Co-owner", ownership: 25 },
+    { name: "Sayyid Khan", role: "Co-owner", ownership: 25 },
+    { name: "Hisyam", role: "Co-owner", ownership: 25 },
+  ],
+});
 const project = replaceDetails(db, {
   slug: "batam-100",
   actor: "TampalIdea recovery",
