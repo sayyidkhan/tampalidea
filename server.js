@@ -16,7 +16,7 @@ fs.mkdirSync(mediaDir, { recursive: true, mode: 0o700 });
 const tokens = [process.env.TAMPALIDEA_ADMIN_TOKEN, process.env.TAMPALIDEA_AGENT_TOKEN].filter(Boolean);
 const staticFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]], ["/index.html", ["index.html", "text/html; charset=utf-8"]],
-  ["/app.js", ["app.js", "application/javascript; charset=utf-8"]], ["/ownership.js", ["ownership.js", "application/javascript; charset=utf-8"]], ["/styles.css", ["styles.css", "text/css; charset=utf-8"]]
+  ["/app.js", ["app.js", "application/javascript; charset=utf-8"]], ["/ownership.js", ["ownership.js", "application/javascript; charset=utf-8"]], ["/styles.css", ["styles.css", "text/css; charset=utf-8"]], ["/detail.css", ["detail.css", "text/css; charset=utf-8"]]
 ]);
 
 function json(response, status, body) { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" }); response.end(JSON.stringify(body)); }
@@ -83,7 +83,7 @@ const server = http.createServer(async (request, response) => {
       response.writeHead(200, { "Content-Type": record.mime_type, "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff", "X-Robots-Tag": "noindex" });
       return fs.createReadStream(path.join(mediaDir, record.storage_key)).pipe(response);
     }
-    const assetPath = pathname.replace(/^\/[a-z0-9-]+\/(app\.js|styles\.css|ownership\.js)$/, "/$1");
+    const assetPath = pathname.replace(/^\/[a-z0-9-]+\/(app\.js|styles\.css|detail\.css|ownership\.js)$/, "/$1");
     if (request.method === "GET" && staticFiles.has(assetPath)) { const [file, type] = staticFiles.get(assetPath); response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, file)).pipe(response); }
     if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, "index.html")).pipe(response); }
     return json(response, 404, { error: "Not found." });
