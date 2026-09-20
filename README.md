@@ -1,32 +1,25 @@
 # TampalIdea
 
-A consent-first contributor and ownership tracker built by Riven Buildsmith.
+TampalIdea is a private, founder-authorised project ledger. Each project has a shareable staging route at `/<project-slug>` with a brochure-style dossier, contributor composition, audit trail and attached visual references.
 
-## Staging verification
+## Data and access model
 
-Run the focused ownership test:
+- Project, contributor, audit and attachment metadata is stored in an app-scoped SQLite database at `TAMPALIDEA_DATA_DIR/tampalidea.sqlite`.
+- Existing `shared-compositions.json` data is migrated on the first SQLite startup.
+- Read routes are public staging views with `noindex,nofollow` headers. Write routes require a bearer token and never accept unauthenticated browser mutations.
+- Set `TAMPALIDEA_AGENT_TOKEN` for Orin/Riven's constrained API access. `TAMPALIDEA_ADMIN_TOKEN` is also accepted for founder operations.
+- Image uploads accept only JPEG, PNG, WebP and GIF, with a 5 MB limit, and are linked to one project.
 
-```sh
-node --test ownership.test.js
-```
+## Agent adapter
 
-The staging deployment is intentionally `noindex,nofollow`. Browser-local contributor records remain available, while shared founder compositions are stored by the local service and displayed separately.
-
-## Shared founder composition adapter
-
-Start the staging app with a durable `TAMPALIDEA_DATA_DIR` outside the repository. Browser reads use `GET /api/projects`; the network mutation endpoint remains disabled unless an operator separately configures an admin token.
-
-Orin's adapter is `scripts/orin-update-composition.js`. It accepts one JSON object through stdin, writes only the fixed TampalIdea shared-composition store, and does not execute input as shell commands or read arbitrary files. An operator must permit its use only for an explicit owner-authorised request. Example input:
-
-```json
-{"projectName":"SAJI by Syam","actor":"Orin Forgekeeper","reason":"Founder-authorised ownership composition update","sourceReference":"WhatsApp owner request","contributors":[{"name":"Hisyam","role":"Founder","ownership":50},{"name":"Sayyid Khan","role":"Founder","ownership":50}]}
-```
-
-The application never treats this administrative record as proof of legal ownership. Obtain appropriate legal advice before issuing shares or relying on an equity record.
-
-## Verification
+`scripts/orin-update-composition.js` sends one founder-authorised composition JSON object from stdin to the local API. It needs `TAMPALIDEA_AGENT_TOKEN` and optionally `TAMPALIDEA_API_URL` (default `http://127.0.0.1:8808`).
 
 ```sh
-node --test ownership.test.js composition.test.js
-TAMPALIDEA_ADMIN_TOKEN=replace-me node server.js
+printf '%s' '{"projectName":"Batam 100","actor":"Orin Forgekeeper","reason":"Founder-authorised update","sourceReference":"Owner request","contributors":[{"name":"Sayyid Khan","role":"Founder","ownership":50},{"name":"Hisyam","role":"Founder","ownership":50}]}' | node scripts/orin-update-composition.js
+```
+
+## Verify
+
+```sh
+node --test ownership.test.js composition.test.js database.test.js
 ```
