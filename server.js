@@ -13,7 +13,6 @@ const mediaDir = path.join(dataDir, "media");
 const db = setup(dataDir);
 importLegacy(db, dataDir);
 fs.mkdirSync(mediaDir, { recursive: true, mode: 0o700 });
-const tokens = [process.env.TAMPALIDEA_ADMIN_TOKEN, process.env.TAMPALIDEA_AGENT_TOKEN].filter(Boolean);
 const staticFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]], ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/app.js", ["app.js", "application/javascript; charset=utf-8"]], ["/ownership.js", ["ownership.js", "application/javascript; charset=utf-8"]], ["/styles.css", ["styles.css", "text/css; charset=utf-8"]], ["/detail.css", ["detail.css", "text/css; charset=utf-8"]]
@@ -29,10 +28,9 @@ function page(response) {
   response.end(html);
 }
 function authorised(request) {
-  const header = request.headers.authorization || "";
-  if (!header.startsWith("Bearer ")) return false;
-  const supplied = Buffer.from(header.slice(7));
-  return tokens.some((token) => { const expected = Buffer.from(token); return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected); });
+  const source = request.socket.remoteAddress || "";
+  const local = source === "127.0.0.1" || source === "::1" || source === "::ffff:127.0.0.1";
+  return local && request.headers["x-zo-gateway-access"] !== "public";
 }
 function parseBody(request, limit = 6_500_000) {
   return new Promise((resolve, reject) => {

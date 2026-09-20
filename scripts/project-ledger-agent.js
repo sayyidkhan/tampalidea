@@ -5,9 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const endpoint = (process.env.TAMPALIDEA_API_URL || "http://127.0.0.1:8808").replace(/\/$/, "");
-const token = process.env.TAMPALIDEA_AGENT_TOKEN;
 const workspaceRoot = "/home/workspace/";
-if (!token) { process.stderr.write("TAMPALIDEA_AGENT_TOKEN is required.\n"); process.exit(2); }
 
 function imageMimeType(file) {
   return ({ ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" })[path.extname(file).toLowerCase()] || "";
@@ -64,7 +62,7 @@ process.stdin.on("end", async () => {
     } else {
       throw new Error("action must be details.replace, image.add, image.update, image.delete, image.setCover, memory.list, memory.create, memory.update or memory.delete.");
     }
-    const options = { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" } };
+    const options = { method, headers: { "Content-Type": "application/json", Accept: "application/json" } };
     if (method !== "GET") options.body = JSON.stringify(payload);
     const response = await fetch(url, options);
     const result = await response.json();
