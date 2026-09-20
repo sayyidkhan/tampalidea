@@ -14,9 +14,9 @@ The staging deployment is intentionally `noindex,nofollow`. Browser-local contri
 
 ## Shared founder composition adapter
 
-Start the staging app with a non-empty `TAMPALIDEA_ADMIN_TOKEN` and, optionally, a durable `TAMPALIDEA_DATA_DIR` outside the repository. The mutation API accepts only bearer-token requests on `POST /api/projects/composition`; browser reads use `GET /api/projects`.
+Start the staging app with a durable `TAMPALIDEA_DATA_DIR` outside the repository. Browser reads use `GET /api/projects`; the network mutation endpoint remains disabled unless an operator separately configures an admin token.
 
-Orin's adapter is `scripts/orin-update-composition.js`. It accepts one JSON object through stdin and does not execute input as shell commands or read arbitrary files. An operator must make the same token available to the adapter and permit its use only for an explicit owner-authorised request. Example input:
+Orin's adapter is `scripts/orin-update-composition.js`. It accepts one JSON object through stdin, writes only the fixed TampalIdea shared-composition store, and does not execute input as shell commands or read arbitrary files. An operator must permit its use only for an explicit owner-authorised request. Example input:
 
 ```json
 {"projectName":"SAJI by Syam","actor":"Orin Forgekeeper","reason":"Founder-authorised ownership composition update","sourceReference":"WhatsApp owner request","contributors":[{"name":"Hisyam","role":"Founder","ownership":50},{"name":"Sayyid Khan","role":"Founder","ownership":50}]}
