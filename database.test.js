@@ -24,8 +24,10 @@ test("stores project detail sections with an append-only audit event", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tampalidea-"));
   const db = setup(dir);
   replaceComposition(db, { projectName: "Batam 100", actor: "Orin Forgekeeper", reason: "Founder-authorised import", sourceReference: "Owner request", contributors: [{ name: "Sayyid Khan", role: "Founder", ownership: 100 }] });
-  const project = replaceDetails(db, { slug: "batam-100", actor: "TampalIdea recovery", reason: "Restored itinerary", sourceReference: "Git history", details: [{ heading: "Day 01", body: "Arrive and ignite" }] });
+  const project = replaceDetails(db, { slug: "batam-100", actor: "TampalIdea recovery", reason: "Restored itinerary", sourceReference: "Git history", appUrl: "https://example.com/app", appLabel: "Project app", details: [{ heading: "Day 01", body: "Arrive and ignite" }] });
   assert.deepEqual(project.details, [{ heading: "Day 01", body: "Arrive and ignite" }]);
+  assert.equal(project.appUrl, "https://example.com/app");
+  assert.equal(project.appLabel, "Project app");
   assert.equal(project.audit.at(-1).eventType, "project.details.replaced");
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });

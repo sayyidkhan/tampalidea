@@ -9,7 +9,7 @@ TampalIdea is a private, founder-authorised project ledger. Each project has a s
 - Read routes are public staging views with `noindex,nofollow` headers. Write routes require a bearer token and never accept unauthenticated browser mutations.
 - Set `TAMPALIDEA_AGENT_TOKEN` for Orin/Riven's constrained API access. `TAMPALIDEA_ADMIN_TOKEN` is also accepted for founder operations.
 - Image uploads accept only JPEG, PNG, WebP and GIF, with a 5 MB limit, and are linked to one project. The first image becomes its cover automatically; a later founder-authorised selection can replace it.
-- Dossier sections are stored alongside the project, recorded in the audit trail, and can be restored from a versioned source.
+- Dossier sections and an optional HTTPS-linked live app preview are stored alongside the project and recorded in the audit trail. The project page displays the link and a lazy-loaded live preview beneath it.
 
 ## Agent adapter
 
@@ -19,7 +19,7 @@ TampalIdea is a private, founder-authorised project ledger. Each project has a s
 printf '%s' '{"projectName":"Batam 100","actor":"Orin Forgekeeper","reason":"Founder-authorised update","sourceReference":"Owner request","contributors":[{"name":"Sayyid Khan","role":"Founder","ownership":50},{"name":"Hisyam","role":"Founder","ownership":50}]}' | node scripts/orin-update-composition.js
 ```
 
-`scripts/orin-update-project-details.js` updates a named project dossier with the same owner-authorised, token-gated path. It accepts `slug`, `actor`, `reason`, `sourceReference`, and a `details` array of `{ heading, body }` sections.
+`scripts/orin-update-project-details.js` updates a named project dossier with the same owner-authorised, token-gated path. It accepts `slug`, `actor`, `reason`, `sourceReference`, a `details` array of `{ heading, body }` sections, and optional `appUrl` / `appLabel` fields for the live app preview.
 
 `scripts/orin-upload-project-image.js` accepts a founder-authorised JSON object containing `slug`, `filename`, `mimeType`, `dataBase64`, `altText`, `actor`, `reason`, `sourceReference`, and optional `cover: true`. `scripts/orin-select-project-cover.js` accepts `slug`, `attachmentId`, `actor`, `reason`, and `sourceReference` to make an existing image the single project cover. Both require `TAMPALIDEA_AGENT_TOKEN`.
 

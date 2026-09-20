@@ -16,6 +16,7 @@ function setup(dataDir) {
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
       tagline TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+      app_url TEXT NOT NULL DEFAULT '', app_label TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     CREATE TABLE IF NOT EXISTS contributors (
@@ -41,6 +42,12 @@ function setup(dataDir) {
   if (!projectColumns.some(({ name }) => name === "details_json")) {
     db.exec("ALTER TABLE projects ADD COLUMN details_json TEXT NOT NULL DEFAULT '[]'");
   }
+  if (!projectColumns.some(({ name }) => name === "app_url")) {
+    db.exec("ALTER TABLE projects ADD COLUMN app_url TEXT NOT NULL DEFAULT ''");
+  }
+  if (!projectColumns.some(({ name }) => name === "app_label")) {
+    db.exec("ALTER TABLE projects ADD COLUMN app_label TEXT NOT NULL DEFAULT ''");
+  }
   const attachmentColumns = db.prepare("PRAGMA table_info(attachments)").all();
   if (!attachmentColumns.some(({ name }) => name === "is_cover")) {
     db.exec("ALTER TABLE attachments ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0 CHECK (is_cover IN (0, 1))");
@@ -58,7 +65,7 @@ function projectRecord(db, slug) {
   const audit = rows(db, "SELECT event_type AS eventType, actor, reason, source_reference AS sourceReference, before_json AS beforeJson, after_json AS afterJson, created_at AS timestamp FROM audit_events WHERE project_id = ? ORDER BY id", project.id)
     .map((event) => ({ ...event, before: JSON.parse(event.beforeJson), after: JSON.parse(event.afterJson), beforeJson: undefined, afterJson: undefined }));
   const attachments = rows(db, "SELECT id, filename, mime_type AS mimeType, bytes, alt_text AS altText, is_cover AS isCover, created_at AS createdAt FROM attachments WHERE project_id = ? ORDER BY is_cover DESC, created_at DESC", project.id);
-  return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, details: JSON.parse(project.details_json || "[]"), createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
+  return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, appUrl: project.app_url, appLabel: project.app_label, details: JSON.parse(project.details_json || "[]"), createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
 }
 
 function listProjects(db) {
@@ -103,19 +110,26 @@ function replaceDetails(db, input) {
   const sourceReference = String(input.sourceReference || "").trim();
   const tagline = String(input.tagline || "").trim();
   const description = String(input.description || "").trim();
+  const prior = projectRecord(db, slug);
+  const appUrl = input.appUrl === undefined ? prior?.appUrl || "" : String(input.appUrl || "").trim();
+  const appLabel = input.appLabel === undefined ? prior?.appLabel || "" : String(input.appLabel || "").trim();
   if (!slug || !actor || !reason || !sourceReference) throw new Error("slug, actor, reason and sourceReference are required.");
-  if (actor.length > 100 || reason.length > 200 || sourceReference.length > 240 || tagline.length > 160 || description.length > 4_000) throw new Error("One or more fields are too long.");
+  if (actor.length > 100 || reason.length > 200 || sourceReference.length > 240 || tagline.length > 160 || description.length > 4_000 || appLabel.length > 120 || appUrl.length > 2_000) throw new Error("One or more fields are too long.");
+  if (appUrl) {
+    let parsed;
+    try { parsed = new URL(appUrl); } catch (_) { throw new Error("appUrl must be a valid HTTPS URL."); }
+    if (parsed.protocol !== "https:") throw new Error("appUrl must be a valid HTTPS URL.");
+  }
   if (!Array.isArray(input.details) || input.details.length > 12) throw new Error("details must contain up to 12 sections.");
   const details = input.details.map((section) => ({ heading: String(section?.heading || "").trim(), body: String(section?.body || "").trim() }));
   if (details.some(({ heading, body }) => !heading || !body || heading.length > 120 || body.length > 6_000)) throw new Error("Each detail needs a heading and body within the allowed length.");
-  const prior = projectRecord(db, slug);
   if (!prior) throw new Error("Project not found.");
   const timestamp = now();
-  const before = { tagline: prior.tagline, description: prior.description, details: prior.details };
-  const after = { tagline: tagline || prior.tagline, description: description || prior.description, details };
+  const before = { tagline: prior.tagline, description: prior.description, appUrl: prior.appUrl, appLabel: prior.appLabel, details: prior.details };
+  const after = { tagline: tagline || prior.tagline, description: description || prior.description, appUrl, appLabel, details };
   db.exec("BEGIN IMMEDIATE");
   try {
-    db.prepare("UPDATE projects SET tagline = ?, description = ?, details_json = ?, updated_at = ? WHERE id = ?").run(after.tagline, after.description, JSON.stringify(details), timestamp, prior.id);
+    db.prepare("UPDATE projects SET tagline = ?, description = ?, app_url = ?, app_label = ?, details_json = ?, updated_at = ? WHERE id = ?").run(after.tagline, after.description, after.appUrl, after.appLabel, JSON.stringify(details), timestamp, prior.id);
     db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'project.details.replaced', ?, ?, ?, ?, ?, ?)")
       .run(prior.id, actor, reason, sourceReference, JSON.stringify(before), JSON.stringify(after), timestamp);
     db.exec("COMMIT");
