@@ -30,3 +30,16 @@ test("stores project detail sections with an append-only audit event", () => {
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("keeps one selected cover image per project", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tampalidea-"));
+  const db = setup(dir);
+  const project = replaceComposition(db, { projectName: "Batam 100", actor: "Orin Forgekeeper", reason: "Founder-authorised import", sourceReference: "Owner request", contributors: [{ name: "Sayyid Khan", role: "Founder", ownership: 100 }] });
+  db.prepare("INSERT INTO attachments (id, project_id, filename, mime_type, bytes, storage_key, alt_text, actor, is_cover, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("00000000-0000-4000-8000-000000000001", project.id, "one.jpg", "image/jpeg", 1, "one.jpg", "First", "Orin Forgekeeper", 1, "2026-09-20T00:00:00.000Z");
+  assert.throws(() => db.prepare("INSERT INTO attachments (id, project_id, filename, mime_type, bytes, storage_key, alt_text, actor, is_cover, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("00000000-0000-4000-8000-000000000002", project.id, "two.jpg", "image/jpeg", 1, "two.jpg", "Second", "Orin Forgekeeper", 1, "2026-09-20T00:01:00.000Z"));
+  const record = projectRecord(db, "batam-100");
+  assert.equal(record.attachments[0].isCover, 1);
+  assert.equal(record.attachments[0].filename, "one.jpg");
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

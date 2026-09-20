@@ -33,6 +33,7 @@ function setup(dataDir) {
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       filename TEXT NOT NULL, mime_type TEXT NOT NULL, bytes INTEGER NOT NULL,
       storage_key TEXT NOT NULL UNIQUE, alt_text TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL,
+      is_cover INTEGER NOT NULL DEFAULT 0 CHECK (is_cover IN (0, 1)),
       created_at TEXT NOT NULL
     ) STRICT;
   `);
@@ -40,6 +41,11 @@ function setup(dataDir) {
   if (!projectColumns.some(({ name }) => name === "details_json")) {
     db.exec("ALTER TABLE projects ADD COLUMN details_json TEXT NOT NULL DEFAULT '[]'");
   }
+  const attachmentColumns = db.prepare("PRAGMA table_info(attachments)").all();
+  if (!attachmentColumns.some(({ name }) => name === "is_cover")) {
+    db.exec("ALTER TABLE attachments ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0 CHECK (is_cover IN (0, 1))");
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS one_cover_per_project ON attachments(project_id) WHERE is_cover = 1");
   return db;
 }
 
@@ -51,7 +57,7 @@ function projectRecord(db, slug) {
   const contributors = rows(db, "SELECT name, role, ownership FROM contributors WHERE project_id = ? ORDER BY name COLLATE NOCASE", project.id);
   const audit = rows(db, "SELECT event_type AS eventType, actor, reason, source_reference AS sourceReference, before_json AS beforeJson, after_json AS afterJson, created_at AS timestamp FROM audit_events WHERE project_id = ? ORDER BY id", project.id)
     .map((event) => ({ ...event, before: JSON.parse(event.beforeJson), after: JSON.parse(event.afterJson), beforeJson: undefined, afterJson: undefined }));
-  const attachments = rows(db, "SELECT id, filename, mime_type AS mimeType, bytes, alt_text AS altText, created_at AS createdAt FROM attachments WHERE project_id = ? ORDER BY created_at DESC", project.id);
+  const attachments = rows(db, "SELECT id, filename, mime_type AS mimeType, bytes, alt_text AS altText, is_cover AS isCover, created_at AS createdAt FROM attachments WHERE project_id = ? ORDER BY is_cover DESC, created_at DESC", project.id);
   return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, details: JSON.parse(project.details_json || "[]"), createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
 }
 

@@ -56,9 +56,48 @@ function attachment(project, input) {
   const id = crypto.randomUUID();
   const ext = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" }[mimeType];
   const storageKey = `${id}${ext}`;
-  fs.writeFileSync(path.join(mediaDir, storageKey), bytes, { mode: 0o600 });
-  db.prepare("INSERT INTO attachments (id, project_id, filename, mime_type, bytes, storage_key, alt_text, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(id, project.id, filename, mimeType, bytes.length, storageKey, altText, actor, new Date().toISOString());
-  return { id, filename, mimeType, bytes: bytes.length, altText };
+  const timestamp = new Date().toISOString();
+  const priorCover = project.attachments.find((asset) => asset.isCover);
+  const isCover = Boolean(input.cover) || !priorCover;
+  const reason = String(input.reason || "Founder-authorised image attachment").trim().slice(0, 200);
+  const sourceReference = String(input.sourceReference || "Attachment API").trim().slice(0, 240);
+  const filePath = path.join(mediaDir, storageKey);
+  fs.writeFileSync(filePath, bytes, { mode: 0o600 });
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    if (isCover) db.prepare("UPDATE attachments SET is_cover = 0 WHERE project_id = ?").run(project.id);
+    db.prepare("INSERT INTO attachments (id, project_id, filename, mime_type, bytes, storage_key, alt_text, actor, is_cover, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(id, project.id, filename, mimeType, bytes.length, storageKey, altText, actor, Number(isCover), timestamp);
+    db.prepare("UPDATE projects SET updated_at = ? WHERE id = ?").run(timestamp, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'attachment.added', ?, ?, ?, ?, ?, ?)")
+      .run(project.id, actor, reason || "Founder-authorised image attachment", sourceReference || "Attachment API", JSON.stringify({ coverAttachmentId: priorCover?.id || null }), JSON.stringify({ attachmentId: id, coverAttachmentId: isCover ? id : priorCover?.id || null }), timestamp);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    fs.rmSync(filePath, { force: true });
+    throw error;
+  }
+  return { id, filename, mimeType, bytes: bytes.length, altText, isCover };
+}
+
+function selectCover(project, attachmentId, input) {
+  const attachment = db.prepare("SELECT id FROM attachments WHERE id = ? AND project_id = ?").get(attachmentId, project.id);
+  if (!attachment) throw new Error("Image not found for this project.");
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "Founder-authorised cover selection").trim().slice(0, 200);
+  const sourceReference = String(input.sourceReference || "Attachment API").trim().slice(0, 240);
+  if (!actor || !reason || !sourceReference || actor.length > 100) throw new Error("actor, reason and sourceReference are required.");
+  const priorCover = project.attachments.find((asset) => asset.isCover);
+  const timestamp = new Date().toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE attachments SET is_cover = 0 WHERE project_id = ?").run(project.id);
+    db.prepare("UPDATE attachments SET is_cover = 1 WHERE id = ? AND project_id = ?").run(attachmentId, project.id);
+    db.prepare("UPDATE projects SET updated_at = ? WHERE id = ?").run(timestamp, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'attachment.cover.selected', ?, ?, ?, ?, ?, ?)")
+      .run(project.id, actor, reason, sourceReference, JSON.stringify({ coverAttachmentId: priorCover?.id || null }), JSON.stringify({ coverAttachmentId: attachmentId }), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return projectRecord(db, project.slug);
 }
 
 const server = http.createServer(async (request, response) => {
@@ -83,6 +122,13 @@ const server = http.createServer(async (request, response) => {
       const project = projectRecord(db, assetMatch[1]);
       if (!project) return json(response, 404, { error: "Project not found." });
       return json(response, 201, { ok: true, attachment: attachment(project, await parseBody(request)) });
+    }
+    const coverMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/attachments\/([0-9a-f-]{36})\/cover$/);
+    if (request.method === "POST" && coverMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      const project = projectRecord(db, coverMatch[1]);
+      if (!project) return json(response, 404, { error: "Project not found." });
+      return json(response, 200, { ok: true, project: selectCover(project, coverMatch[2], await parseBody(request)) });
     }
     const mediaMatch = pathname.match(/^\/media\/([0-9a-f-]{36})$/);
     if (request.method === "GET" && mediaMatch) {
