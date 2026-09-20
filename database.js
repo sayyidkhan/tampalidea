@@ -37,6 +37,13 @@ function setup(dataDir) {
       is_cover INTEGER NOT NULL DEFAULT 0 CHECK (is_cover IN (0, 1)),
       created_at TEXT NOT NULL
     ) STRICT;
+    CREATE TABLE IF NOT EXISTS project_memories (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      title TEXT NOT NULL, content TEXT NOT NULL, memory_type TEXT NOT NULL DEFAULT 'note',
+      tags_json TEXT NOT NULL DEFAULT '[]', created_by TEXT NOT NULL, updated_by TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS project_memories_by_project ON project_memories(project_id, updated_at DESC);
   `);
   const projectColumns = db.prepare("PRAGMA table_info(projects)").all();
   if (!projectColumns.some(({ name }) => name === "details_json")) {
@@ -70,6 +77,87 @@ function projectRecord(db, slug) {
 
 function listProjects(db) {
   return rows(db, "SELECT slug FROM projects ORDER BY updated_at DESC").map(({ slug }) => projectRecord(db, slug));
+}
+
+function memoryFromRow(memory) {
+  return { id: memory.id, title: memory.title, content: memory.content, type: memory.memory_type, tags: JSON.parse(memory.tags_json), createdBy: memory.created_by, updatedBy: memory.updated_by, createdAt: memory.created_at, updatedAt: memory.updated_at };
+}
+
+function memoryInput(input, prior = null) {
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "").trim();
+  const sourceReference = String(input.sourceReference || "").trim();
+  if (!actor || !reason || !sourceReference) throw new Error("actor, reason and sourceReference are required.");
+  if (actor.length > 100 || reason.length > 200 || sourceReference.length > 240) throw new Error("One or more fields are too long.");
+  const title = input.title === undefined ? prior?.title : String(input.title || "").trim();
+  const content = input.content === undefined ? prior?.content : String(input.content || "").trim();
+  const type = input.type === undefined ? prior?.type : String(input.type || "note").trim();
+  const tags = input.tags === undefined ? prior?.tags || [] : input.tags;
+  if (!title || !content || title.length > 160 || content.length > 12_000) throw new Error("title and content are required within the allowed length.");
+  if (!new Set(["note", "decision", "fact", "todo", "reference"]).has(type)) throw new Error("type must be note, decision, fact, todo or reference.");
+  if (!Array.isArray(tags) || tags.length > 12) throw new Error("tags must contain up to 12 items.");
+  const cleanTags = [...new Set(tags.map((tag) => String(tag || "").trim()).filter(Boolean))];
+  if (cleanTags.some((tag) => tag.length > 48)) throw new Error("Each tag must be at most 48 characters.");
+  return { actor, reason, sourceReference, title, content, type, tags: cleanTags };
+}
+
+function memoryProject(db, slug) {
+  const project = db.prepare("SELECT id, slug FROM projects WHERE slug = ?").get(slug);
+  if (!project) throw new Error("Project not found.");
+  return project;
+}
+
+function listMemories(db, slug) {
+  const project = memoryProject(db, slug);
+  return rows(db, "SELECT * FROM project_memories WHERE project_id = ? ORDER BY updated_at DESC, id DESC", project.id).map(memoryFromRow);
+}
+
+function createMemory(db, slug, input) {
+  const project = memoryProject(db, slug);
+  const memory = memoryInput(input);
+  const timestamp = now();
+  const record = { id: crypto.randomUUID(), title: memory.title, content: memory.content, type: memory.type, tags: memory.tags, createdBy: memory.actor, updatedBy: memory.actor, createdAt: timestamp, updatedAt: timestamp };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("INSERT INTO project_memories (id, project_id, title, content, memory_type, tags_json, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(record.id, project.id, record.title, record.content, record.type, JSON.stringify(record.tags), record.createdBy, record.updatedBy, timestamp, timestamp);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'memory.created', ?, ?, ?, ?, ?, ?)").run(project.id, memory.actor, memory.reason, memory.sourceReference, "null", JSON.stringify(record), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return record;
+}
+
+function updateMemory(db, slug, id, input) {
+  const project = memoryProject(db, slug);
+  const priorRow = db.prepare("SELECT * FROM project_memories WHERE id = ? AND project_id = ?").get(id, project.id);
+  if (!priorRow) throw new Error("Project memory not found.");
+  const prior = memoryFromRow(priorRow);
+  const memory = memoryInput(input, prior);
+  if (input.title === undefined && input.content === undefined && input.type === undefined && input.tags === undefined) throw new Error("A memory field to update is required.");
+  const timestamp = now();
+  const after = { ...prior, title: memory.title, content: memory.content, type: memory.type, tags: memory.tags, updatedBy: memory.actor, updatedAt: timestamp };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE project_memories SET title = ?, content = ?, memory_type = ?, tags_json = ?, updated_by = ?, updated_at = ? WHERE id = ? AND project_id = ?").run(after.title, after.content, after.type, JSON.stringify(after.tags), after.updatedBy, timestamp, id, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'memory.updated', ?, ?, ?, ?, ?, ?)").run(project.id, memory.actor, memory.reason, memory.sourceReference, JSON.stringify(prior), JSON.stringify(after), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return after;
+}
+
+function deleteMemory(db, slug, id, input) {
+  const project = memoryProject(db, slug);
+  const priorRow = db.prepare("SELECT * FROM project_memories WHERE id = ? AND project_id = ?").get(id, project.id);
+  if (!priorRow) throw new Error("Project memory not found.");
+  const prior = memoryFromRow(priorRow);
+  const memory = memoryInput({ ...input, title: prior.title, content: prior.content, type: prior.type, tags: prior.tags }, prior);
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM project_memories WHERE id = ? AND project_id = ?").run(id, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'memory.deleted', ?, ?, ?, ?, ?, ?)").run(project.id, memory.actor, memory.reason, memory.sourceReference, JSON.stringify(prior), "null", timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return prior;
 }
 
 function replaceComposition(db, input) {
@@ -147,4 +235,4 @@ function importLegacy(db, dataDir) {
   }
 }
 
-module.exports = { importLegacy, listProjects, projectRecord, replaceComposition, replaceDetails, setup };
+module.exports = { createMemory, deleteMemory, importLegacy, listMemories, listProjects, projectRecord, replaceComposition, replaceDetails, setup, updateMemory };

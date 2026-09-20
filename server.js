@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { importLegacy, listProjects, projectRecord, replaceComposition, replaceDetails, setup } = require("./database.js");
+const { createMemory, deleteMemory, importLegacy, listMemories, listProjects, projectRecord, replaceComposition, replaceDetails, setup, updateMemory } = require("./database.js");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8808);
@@ -158,6 +158,19 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && pathname === "/api/projects") return json(response, 200, { projects: listProjects(db) });
     const projectMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
     if (request.method === "GET" && projectMatch) { const project = projectRecord(db, projectMatch[1]); return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." }); }
+    const memoryCollectionMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/memories$/);
+    if ((request.method === "GET" || request.method === "POST") && memoryCollectionMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      if (request.method === "GET") return json(response, 200, { memories: listMemories(db, memoryCollectionMatch[1]) });
+      return json(response, 201, { ok: true, memory: createMemory(db, memoryCollectionMatch[1], await parseBody(request)) });
+    }
+    const memoryMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/memories\/([0-9a-f-]{36})$/);
+    if ((request.method === "PATCH" || request.method === "DELETE") && memoryMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      const input = await parseBody(request);
+      const result = request.method === "PATCH" ? updateMemory(db, memoryMatch[1], memoryMatch[2], input) : deleteMemory(db, memoryMatch[1], memoryMatch[2], input);
+      return json(response, 200, { ok: true, memory: result });
+    }
     if (request.method === "POST" && pathname === "/api/projects/composition") {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
       return json(response, 200, { ok: true, project: replaceComposition(db, await parseBody(request)) });

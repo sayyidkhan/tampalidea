@@ -51,10 +51,22 @@ process.stdin.on("end", async () => {
       const attachmentId = String(payload.attachmentId || "");
       if (!/^[0-9a-f-]{36}$/.test(attachmentId)) throw new Error("image.setCover requires attachmentId.");
       url = `${endpoint}/api/projects/${slug}/attachments/${attachmentId}/cover`;
+    } else if (action === "memory.list") {
+      method = "GET";
+      url = `${endpoint}/api/projects/${slug}/memories`;
+    } else if (action === "memory.create") {
+      url = `${endpoint}/api/projects/${slug}/memories`;
+    } else if (action === "memory.update" || action === "memory.delete") {
+      const memoryId = String(payload.memoryId || "");
+      if (!/^[0-9a-f-]{36}$/.test(memoryId)) throw new Error(`${action} requires memoryId.`);
+      method = action === "memory.update" ? "PATCH" : "DELETE";
+      url = `${endpoint}/api/projects/${slug}/memories/${memoryId}`;
     } else {
-      throw new Error("action must be details.replace, image.add, image.update, image.delete or image.setCover.");
+      throw new Error("action must be details.replace, image.add, image.update, image.delete, image.setCover, memory.list, memory.create, memory.update or memory.delete.");
     }
-    const response = await fetch(url, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(payload) });
+    const options = { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" } };
+    if (method !== "GET") options.body = JSON.stringify(payload);
+    const response = await fetch(url, options);
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "TampalIdea rejected the change.");
     process.stdout.write(`${JSON.stringify(result)}\n`);

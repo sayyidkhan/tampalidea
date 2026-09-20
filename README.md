@@ -35,6 +35,17 @@ Any authorised agent can use `scripts/project-ledger-agent.js` with `TAMPALIDEA_
 
 Every request needs `slug`, `actor`, `reason`, and `sourceReference`, and creates an append-only audit event. The app never grants unauthenticated browser write access.
 
+## Project memory layer
+
+Each project has a private memory layer that is deliberately excluded from public dossier and project API responses. Authorised chat agents use `scripts/project-ledger-agent.js` with:
+
+- `memory.list` — retrieve a project’s current private memories.
+- `memory.create` — add a `title`, `content`, optional `type` (`note`, `decision`, `fact`, `todo`, `reference`) and `tags`.
+- `memory.update` — change a memory by `memoryId`.
+- `memory.delete` — remove a memory by `memoryId`.
+
+Create, update and delete operations require `actor`, `reason` and `sourceReference`; each is captured in the project’s append-only audit record. Read access also requires the bearer token.
+
 ## Verify
 
 ```sh

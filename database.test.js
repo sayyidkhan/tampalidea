@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { listProjects, projectRecord, replaceComposition, replaceDetails, setup } = require("./database.js");
+const { createMemory, deleteMemory, listMemories, listProjects, projectRecord, replaceComposition, replaceDetails, setup, updateMemory } = require("./database.js");
 
 test("stores a named composition and preserves its audit record in SQLite", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tampalidea-"));
@@ -42,6 +42,23 @@ test("keeps one selected cover image per project", () => {
   const record = projectRecord(db, "batam-100");
   assert.equal(record.attachments[0].isCover, 1);
   assert.equal(record.attachments[0].filename, "one.jpg");
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("keeps private project memories separate and auditably editable", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tampalidea-"));
+  const db = setup(dir);
+  replaceComposition(db, { projectName: "Batam 100", actor: "Orin Forgekeeper", reason: "Founder-authorised import", sourceReference: "Owner request", contributors: [{ name: "Sayyid Khan", role: "Founder", ownership: 100 }] });
+  const created = createMemory(db, "batam-100", { actor: "Orin Forgekeeper", reason: "Save founder decision", sourceReference: "Sayyid WhatsApp DM", title: "Travel priority", content: "Keep the trip useful and celebratory.", type: "decision", tags: ["batam", "priority"] });
+  assert.equal(listMemories(db, "batam-100").length, 1);
+  const updated = updateMemory(db, "batam-100", created.id, { actor: "Orin Forgekeeper", reason: "Clarify founder decision", sourceReference: "Sayyid WhatsApp DM", content: "Keep the trip useful, celebratory and mobile-first." });
+  assert.equal(updated.type, "decision");
+  assert.match(updated.content, /mobile-first/);
+  deleteMemory(db, "batam-100", created.id, { actor: "Orin Forgekeeper", reason: "Remove superseded memory", sourceReference: "Sayyid WhatsApp DM" });
+  assert.deepEqual(listMemories(db, "batam-100"), []);
+  const audit = projectRecord(db, "batam-100").audit.map((event) => event.eventType);
+  assert.deepEqual(audit.slice(-3), ["memory.created", "memory.updated", "memory.deleted"]);
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
