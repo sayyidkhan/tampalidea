@@ -32,8 +32,9 @@
     document.querySelector("#hero .kicker").textContent = "Project dossier";
     document.querySelector("#hero h1").innerHTML = `${escape(project.name).replace(/ /g, "<br>")}`;
     document.querySelector("#hero .lede").textContent = project.description || project.tagline || "A private record for this project’s people and direction.";
-    document.querySelector("#hero-action").textContent = "See project record ↓";
-    document.querySelector("#hero-action").href = "#project-detail";
+    document.querySelector("#hero-action").textContent = "← All projects";
+    document.querySelector("#hero-action").href = `${base}/`;
+    document.querySelector("#projects").hidden = true;
     const gallery = project.attachments.map((asset) => `<figure><img src="${imageUrl(asset.id)}" alt="${escape(asset.altText || asset.filename)}"><figcaption>${escape(asset.altText || asset.filename)}</figcaption></figure>`).join("") || '<p class="loading">No visual references attached yet.</p>';
     const updates = project.audit.slice().reverse().map((event) => `<li><b>${escape(event.actor)}</b><span>${escape(event.reason)} · ${new Date(event.timestamp).toLocaleDateString()}</span></li>`).join("");
     const brief = project.details?.length ? `<section class="brief"><p class="kicker">Recovered project brief</p>${project.details.map((section) => `<article><h3>${escape(section.heading)}</h3><p>${escape(section.body).replace(/\n/g, "<br>")}</p></article>`).join("")}</section>` : "";
@@ -46,7 +47,6 @@
         const response = await fetch(api(`/projects/${slug}`), { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error("Project unavailable");
         renderDetail((await response.json()).project);
-        document.querySelector("#project-list").hidden = true;
       } else {
         const response = await fetch(api("/projects"), { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error("Ledger unavailable");
