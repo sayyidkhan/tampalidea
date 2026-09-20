@@ -6,6 +6,44 @@
 
   let state = loadState();
 
+  function formatUnits(units) {
+    return formatPercentage(units);
+  }
+
+  async function loadSharedProjects() {
+    const status = $("shared-status");
+    status.textContent = "Loading the shared record…";
+    try {
+      const basePath = window.location.pathname.endsWith("/") ? window.location.pathname : `${window.location.pathname}/`;
+      const response = await fetch(`${basePath}api/projects`, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("Shared records are unavailable.");
+      renderSharedProjects((await response.json()).projects || []);
+    } catch (error) {
+      status.textContent = "Shared records are unavailable. Browser-local records below still work independently.";
+      $("shared-projects").innerHTML = '<p class="empty">No shared record could be loaded.</p>';
+    }
+  }
+
+  function renderSharedProjects(projects) {
+    const container = $("shared-projects");
+    const status = $("shared-status");
+    container.replaceChildren();
+    if (!projects.length) {
+      status.textContent = "No shared founder composition has been recorded yet.";
+      container.innerHTML = '<p class="empty">No shared founder compositions yet.</p>';
+      return;
+    }
+    status.textContent = `${projects.length} shared founder composition${projects.length === 1 ? "" : "s"} loaded.`;
+    projects.forEach((project) => {
+      const article = document.createElement("article");
+      article.className = "audit-record";
+      const people = project.contributors.map((person) => `${escapeHtml(person.name)} (${escapeHtml(person.role)}) — ${formatUnits(person.ownership)}`).join("<br>");
+      const latest = project.audit[project.audit.length - 1];
+      article.innerHTML = `<div><strong>${escapeHtml(project.name)}</strong><p>Updated ${new Date(project.updatedAt).toLocaleString()} · ${project.audit.length} auditable update${project.audit.length === 1 ? "" : "s"}</p></div><p>${people}</p><p class="muted">Last recorded by ${escapeHtml(latest.actor)} · ${escapeHtml(latest.reason)}</p>`;
+      container.append(article);
+    });
+  }
+
   function loadState() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -115,5 +153,8 @@
     render();
   });
 
+  $("refresh-shared").addEventListener("click", loadSharedProjects);
+
   render();
+  loadSharedProjects();
 })();
