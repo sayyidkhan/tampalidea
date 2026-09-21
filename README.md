@@ -38,6 +38,7 @@ printf '%s' '{"projectName":"Batam 100","actor":"Orin Forgekeeper","reason":"Fou
 Any Zo-local agent can use `scripts/project-ledger-agent.js`. It accepts an input JSON `action` of:
 
 - `project.list` — list projects bound to the trusted `whatsappGroupId`.
+- `project.portfolio` — list only public `regular` projects; it never returns WhatsApp-group projects, private memories or group bindings.
 - `project.get` — retrieve one project bound to the trusted `whatsappGroupId`.
 - `project.create` — create a `whatsapp_group` project with its trusted `whatsappGroupId`.
 - `access.update` — move an existing project between `regular` and `whatsapp_group`; this must remain founder-authorised.

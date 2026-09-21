@@ -19,10 +19,13 @@ process.stdin.on("end", async () => {
     const payload = JSON.parse(input);
     const action = String(payload.action || "");
     const slug = String(payload.slug || "");
-    if (action !== "project.list" && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("A valid project slug is required.");
+    if (!["project.list", "project.portfolio"].includes(action) && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("A valid project slug is required.");
     let method = "POST";
     let url = `${endpoint}/api/projects/${slug}/details`;
-    if (action === "project.list" || action === "project.get") {
+    if (action === "project.portfolio") {
+      method = "GET";
+      url = `${endpoint}/api/agent/portfolio`;
+    } else if (action === "project.list" || action === "project.get") {
       const whatsappGroupId = String(payload.whatsappGroupId || "");
       if (!/^\d{5,32}@g\.us$/.test(whatsappGroupId)) throw new Error(`${action} requires the trusted WhatsApp group ID.`);
       method = "GET";
@@ -71,7 +74,7 @@ process.stdin.on("end", async () => {
       method = action === "memory.update" ? "PATCH" : "DELETE";
       url = `${endpoint}/api/projects/${slug}/memories/${memoryId}`;
     } else {
-      throw new Error("action must be project.list, project.get, project.create, access.update, details.replace, image.add, image.update, image.delete, image.setCover, memory.list, memory.create, memory.update or memory.delete.");
+      throw new Error("action must be project.portfolio, project.list, project.get, project.create, access.update, details.replace, image.add, image.update, image.delete, image.setCover, memory.list, memory.create, memory.update or memory.delete.");
     }
     const options = { method, headers: { "Content-Type": "application/json", Accept: "application/json" } };
     if (method !== "GET") options.body = JSON.stringify(payload);

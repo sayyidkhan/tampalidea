@@ -212,6 +212,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && pathname === "/api/projects") return json(response, 200, { projects: listProjects(db, { visibilityScope: "regular" }).map(publicProject) });
     const projectMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
     if (request.method === "GET" && projectMatch) { const project = publicProject(projectRecord(db, projectMatch[1])); return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." }); }
+    if (request.method === "GET" && pathname === "/api/agent/portfolio") {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      return json(response, 200, { projects: listProjects(db, { visibilityScope: "regular" }).map(publicProject) });
+    }
     if (request.method === "GET" && pathname === "/api/agent/projects") {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
       return json(response, 200, { projects: listProjects(db, { whatsappGroupId: groupIdFrom(request) }) });
