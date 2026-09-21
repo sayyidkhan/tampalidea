@@ -10,6 +10,7 @@ TampalIdea is a private, founder-authorised project ledger. Each project has a s
 - Zo agents use the local `http://127.0.0.1:8808` interface directly; no agent token is required or stored.
 - Image uploads accept only JPEG, PNG, WebP and GIF, with a 5 MB limit, and are linked to one project. The first image becomes its cover automatically; a later founder-authorised selection can replace it.
 - Dossier sections and an optional HTTPS-linked live app preview are stored alongside the project and recorded in the audit trail. The project page displays the link and a lazy-loaded live preview beneath it.
+- Each project has a `visibilityScope`: `regular` (the default) or `whatsapp_group`. A group project stores its canonical WhatsApp group JID and is unavailable from the public staging API and URL. Only the Zo-local group-agent endpoints can list or read it, and only when given the exact bound group JID.
 
 ## Agent adapter
 
@@ -27,13 +28,19 @@ printf '%s' '{"projectName":"Batam 100","actor":"Orin Forgekeeper","reason":"Fou
 
 Any Zo-local agent can use `scripts/project-ledger-agent.js`. It accepts an input JSON `action` of:
 
+- `project.list` — list projects bound to the trusted `whatsappGroupId`.
+- `project.get` — retrieve one project bound to the trusted `whatsappGroupId`.
+- `project.create` — create a `whatsapp_group` project with its trusted `whatsappGroupId`.
+- `access.update` — move an existing project between `regular` and `whatsapp_group`; this must remain founder-authorised.
 - `details.replace` — replace a project’s detail sections and optional `appUrl` / `appLabel`.
 - `image.add` — attach an image using `dataBase64`, or a `filePath` within `/home/workspace`; the first image becomes the cover unless `cover: true` selects it.
 - `image.update` — update an image’s `altText` or set `cover: true`.
 - `image.setCover` — select an existing `attachmentId` as cover.
 - `image.delete` — remove an attachment; if it was the cover, the newest remaining image becomes the cover.
 
-Every request needs `slug`, `actor`, `reason`, and `sourceReference`, and creates an append-only audit event. The app never grants unauthenticated browser write access.
+Every action except `project.list` needs `slug`, `actor`, `reason`, and `sourceReference`; `project.create` also needs `projectName` and contributor composition. Every write creates an append-only audit event. The app never grants unauthenticated browser write access.
+
+`whatsappGroupId` must be the exact group ID supplied by the WhatsApp transport (for example, `120363410715375967@g.us`), never a value asserted by a member. The public staging site intentionally shows only `regular` projects; group projects are visible through Orin only in their bound chat.
 
 ## Project memory layer
 

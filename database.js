@@ -17,6 +17,7 @@ function setup(dataDir) {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
       tagline TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
       app_url TEXT NOT NULL DEFAULT '', app_label TEXT NOT NULL DEFAULT '',
+      visibility_scope TEXT NOT NULL DEFAULT 'regular', whatsapp_group_id TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     CREATE TABLE IF NOT EXISTS contributors (
@@ -55,6 +56,12 @@ function setup(dataDir) {
   if (!projectColumns.some(({ name }) => name === "app_label")) {
     db.exec("ALTER TABLE projects ADD COLUMN app_label TEXT NOT NULL DEFAULT ''");
   }
+  if (!projectColumns.some(({ name }) => name === "visibility_scope")) {
+    db.exec("ALTER TABLE projects ADD COLUMN visibility_scope TEXT NOT NULL DEFAULT 'regular'");
+  }
+  if (!projectColumns.some(({ name }) => name === "whatsapp_group_id")) {
+    db.exec("ALTER TABLE projects ADD COLUMN whatsapp_group_id TEXT NOT NULL DEFAULT ''");
+  }
   const attachmentColumns = db.prepare("PRAGMA table_info(attachments)").all();
   if (!attachmentColumns.some(({ name }) => name === "is_cover")) {
     db.exec("ALTER TABLE attachments ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0 CHECK (is_cover IN (0, 1))");
@@ -65,6 +72,23 @@ function setup(dataDir) {
 
 function rows(db, sql, ...values) { return db.prepare(sql).all(...values); }
 
+function normaliseWhatsAppGroupId(value) {
+  const groupId = String(value || "").trim();
+  if (!/^\d{5,32}@g\.us$/.test(groupId)) throw new Error("A valid WhatsApp group ID is required.");
+  return groupId;
+}
+
+function projectAccess(input, prior = null) {
+  const visibilityScope = String(input.visibilityScope === undefined ? prior?.visibilityScope || "regular" : input.visibilityScope).trim();
+  const rawGroupId = input.whatsappGroupId === undefined ? prior?.whatsappGroupId || "" : input.whatsappGroupId;
+  if (!new Set(["regular", "whatsapp_group"]).has(visibilityScope)) throw new Error("visibilityScope must be regular or whatsapp_group.");
+  if (visibilityScope === "regular") {
+    if (String(rawGroupId || "").trim()) throw new Error("Regular projects cannot have a WhatsApp group ID.");
+    return { visibilityScope, whatsappGroupId: "" };
+  }
+  return { visibilityScope, whatsappGroupId: normaliseWhatsAppGroupId(rawGroupId) };
+}
+
 function projectRecord(db, slug) {
   const project = db.prepare("SELECT * FROM projects WHERE slug = ?").get(slug);
   if (!project) return null;
@@ -72,11 +96,24 @@ function projectRecord(db, slug) {
   const audit = rows(db, "SELECT event_type AS eventType, actor, reason, source_reference AS sourceReference, before_json AS beforeJson, after_json AS afterJson, created_at AS timestamp FROM audit_events WHERE project_id = ? ORDER BY id", project.id)
     .map((event) => ({ ...event, before: JSON.parse(event.beforeJson), after: JSON.parse(event.afterJson), beforeJson: undefined, afterJson: undefined }));
   const attachments = rows(db, "SELECT id, filename, mime_type AS mimeType, bytes, alt_text AS altText, is_cover AS isCover, created_at AS createdAt FROM attachments WHERE project_id = ? ORDER BY is_cover DESC, created_at DESC", project.id);
-  return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, appUrl: project.app_url, appLabel: project.app_label, details: JSON.parse(project.details_json || "[]"), createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
+  return { id: project.id, slug: project.slug, name: project.name, tagline: project.tagline, description: project.description, appUrl: project.app_url, appLabel: project.app_label, visibilityScope: project.visibility_scope || "regular", whatsappGroupId: project.whatsapp_group_id || "", details: JSON.parse(project.details_json || "[]"), createdAt: project.created_at, updatedAt: project.updated_at, contributors, audit, attachments };
 }
 
-function listProjects(db) {
-  return rows(db, "SELECT slug FROM projects ORDER BY updated_at DESC").map(({ slug }) => projectRecord(db, slug));
+function listProjects(db, access = null) {
+  let sql = "SELECT slug FROM projects";
+  const values = [];
+  if (access?.visibilityScope === "regular") sql += " WHERE visibility_scope = 'regular'";
+  if (access?.whatsappGroupId) {
+    sql += " WHERE visibility_scope = 'whatsapp_group' AND whatsapp_group_id = ?";
+    values.push(normaliseWhatsAppGroupId(access.whatsappGroupId));
+  }
+  return rows(db, `${sql} ORDER BY updated_at DESC`, ...values).map(({ slug }) => projectRecord(db, slug));
+}
+
+function groupProjectRecord(db, slug, whatsappGroupId) {
+  const project = projectRecord(db, slug);
+  if (!project || project.visibilityScope !== "whatsapp_group" || project.whatsappGroupId !== normaliseWhatsAppGroupId(whatsappGroupId)) return null;
+  return project;
 }
 
 function memoryFromRow(memory) {
@@ -174,10 +211,15 @@ function replaceComposition(db, input) {
   db.exec("BEGIN IMMEDIATE");
   try {
     const prior = projectRecord(db, slug);
+    const hasAccessChange = input.visibilityScope !== undefined || input.whatsappGroupId !== undefined;
+    if (prior && hasAccessChange && (input.visibilityScope !== prior.visibilityScope || String(input.whatsappGroupId || "") !== prior.whatsappGroupId)) {
+      throw new Error("Use the project access update to change a project's visibility scope.");
+    }
+    const access = prior ? projectAccess({}, prior) : projectAccess(input);
     if (prior) {
       db.prepare("UPDATE projects SET name = ?, tagline = ?, description = ?, updated_at = ? WHERE id = ?").run(name, String(input.tagline || prior.tagline || "").slice(0, 160), String(input.description || prior.description || "").slice(0, 4000), timestamp, prior.id);
     } else {
-      db.prepare("INSERT INTO projects (id, name, slug, tagline, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(crypto.randomUUID(), name, slug, String(input.tagline || "").slice(0, 160), String(input.description || "").slice(0, 4000), timestamp, timestamp);
+      db.prepare("INSERT INTO projects (id, name, slug, tagline, description, visibility_scope, whatsapp_group_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(crypto.randomUUID(), name, slug, String(input.tagline || "").slice(0, 160), String(input.description || "").slice(0, 4000), access.visibilityScope, access.whatsappGroupId, timestamp, timestamp);
     }
     const project = db.prepare("SELECT id FROM projects WHERE slug = ?").get(slug);
     db.prepare("DELETE FROM contributors WHERE project_id = ?").run(project.id);
@@ -185,6 +227,31 @@ function replaceComposition(db, input) {
     for (const person of contributors) insert.run(project.id, person.name, person.role, person.ownership);
     db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'composition.replaced', ?, ?, ?, ?, ?, ?)")
       .run(project.id, actor, reason, sourceReference, JSON.stringify(prior?.contributors || []), JSON.stringify(contributors), timestamp);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return projectRecord(db, slug);
+}
+
+function updateProjectAccess(db, input) {
+  if (!input || typeof input !== "object") throw new Error("Request body must be an object.");
+  const slug = projectId(input.slug || "");
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "").trim();
+  const sourceReference = String(input.sourceReference || "").trim();
+  if (!slug || !actor || !reason || !sourceReference) throw new Error("slug, actor, reason and sourceReference are required.");
+  if (actor.length > 100 || reason.length > 200 || sourceReference.length > 240) throw new Error("One or more fields are too long.");
+  const prior = projectRecord(db, slug);
+  if (!prior) throw new Error("Project not found.");
+  const access = projectAccess(input, prior);
+  if (access.visibilityScope === prior.visibilityScope && access.whatsappGroupId === prior.whatsappGroupId) return prior;
+  const timestamp = now();
+  const before = { visibilityScope: prior.visibilityScope, whatsappGroupId: prior.whatsappGroupId };
+  const after = { visibilityScope: access.visibilityScope, whatsappGroupId: access.whatsappGroupId };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE projects SET visibility_scope = ?, whatsapp_group_id = ?, updated_at = ? WHERE id = ?").run(access.visibilityScope, access.whatsappGroupId, timestamp, prior.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'project.access.updated', ?, ?, ?, ?, ?, ?)")
+      .run(prior.id, actor, reason, sourceReference, JSON.stringify(before), JSON.stringify(after), timestamp);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
   return projectRecord(db, slug);
@@ -235,4 +302,4 @@ function importLegacy(db, dataDir) {
   }
 }
 
-module.exports = { createMemory, deleteMemory, importLegacy, listMemories, listProjects, projectRecord, replaceComposition, replaceDetails, setup, updateMemory };
+module.exports = { createMemory, deleteMemory, groupProjectRecord, importLegacy, listMemories, listProjects, normaliseWhatsAppGroupId, projectRecord, replaceComposition, replaceDetails, setup, updateMemory, updateProjectAccess };

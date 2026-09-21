@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { createMemory, deleteMemory, importLegacy, listMemories, listProjects, projectRecord, replaceComposition, replaceDetails, setup, updateMemory } = require("./database.js");
+const { createMemory, deleteMemory, groupProjectRecord, importLegacy, listMemories, listProjects, normaliseWhatsAppGroupId, projectRecord, replaceComposition, replaceDetails, setup, updateMemory, updateProjectAccess } = require("./database.js");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8808);
@@ -42,6 +42,19 @@ function parseBody(request, limit = 6_500_000) {
   });
 }
 function safeSlug(value) { return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ? value : null; }
+function publicProject(project) {
+  if (!project || project.visibilityScope !== "regular") return null;
+  const { visibilityScope, whatsappGroupId, audit, ...record } = project;
+  return { ...record, audit: audit.map(({ before, after, ...event }) => {
+    const clean = (value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      const { whatsappGroupId: _groupId, ...rest } = value;
+      return rest;
+    };
+    return { ...event, before: clean(before), after: clean(after) };
+  }) };
+}
+function groupIdFrom(request) { return normaliseWhatsAppGroupId(new URL(request.url, "http://localhost").searchParams.get("whatsappGroupId")); }
 function attachment(project, input) {
   const mimeType = String(input.mimeType || "");
   const filename = path.basename(String(input.filename || "upload"));
@@ -153,9 +166,19 @@ const server = http.createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   try {
     if (request.method === "GET" && pathname === "/api/health") return json(response, 200, { status: "ok", storage: "sqlite" });
-    if (request.method === "GET" && pathname === "/api/projects") return json(response, 200, { projects: listProjects(db) });
+    if (request.method === "GET" && pathname === "/api/projects") return json(response, 200, { projects: listProjects(db, { visibilityScope: "regular" }).map(publicProject) });
     const projectMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
-    if (request.method === "GET" && projectMatch) { const project = projectRecord(db, projectMatch[1]); return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." }); }
+    if (request.method === "GET" && projectMatch) { const project = publicProject(projectRecord(db, projectMatch[1])); return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." }); }
+    if (request.method === "GET" && pathname === "/api/agent/projects") {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      return json(response, 200, { projects: listProjects(db, { whatsappGroupId: groupIdFrom(request) }) });
+    }
+    const agentProjectMatch = pathname.match(/^\/api\/agent\/projects\/([a-z0-9-]+)$/);
+    if (request.method === "GET" && agentProjectMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      const project = groupProjectRecord(db, agentProjectMatch[1], groupIdFrom(request));
+      return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not available in this group." });
+    }
     const memoryCollectionMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/memories$/);
     if ((request.method === "GET" || request.method === "POST") && memoryCollectionMatch) {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
@@ -172,6 +195,11 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && pathname === "/api/projects/composition") {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
       return json(response, 200, { ok: true, project: replaceComposition(db, await parseBody(request)) });
+    }
+    const accessMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/access$/);
+    if (request.method === "POST" && accessMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      return json(response, 200, { ok: true, project: updateProjectAccess(db, { ...(await parseBody(request)), slug: accessMatch[1] }) });
     }
     const detailMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/details$/);
     if (request.method === "POST" && detailMatch) {
@@ -210,7 +238,7 @@ const server = http.createServer(async (request, response) => {
     const assetPath = pathname.replace(/^\/[a-z0-9-]+\/(app\.js|styles\.css|detail\.css|ownership\.js)$/, "/$1");
     if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) return page(response);
     if (request.method === "GET" && staticFiles.has(assetPath)) { const [file, type] = staticFiles.get(assetPath); response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, file)).pipe(response); }
-    if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) return page(response);
+    if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) return publicProject(projectRecord(db, pathname.slice(1))) ? page(response) : json(response, 404, { error: "Project not found." });
     return json(response, 404, { error: "Not found." });
   } catch (error) { return json(response, 400, { error: error.message || "Invalid request." }); }
 });

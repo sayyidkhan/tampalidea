@@ -19,10 +19,21 @@ process.stdin.on("end", async () => {
     const payload = JSON.parse(input);
     const action = String(payload.action || "");
     const slug = String(payload.slug || "");
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("A valid project slug is required.");
+    if (action !== "project.list" && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("A valid project slug is required.");
     let method = "POST";
     let url = `${endpoint}/api/projects/${slug}/details`;
-    if (action === "details.replace") {
+    if (action === "project.list" || action === "project.get") {
+      const whatsappGroupId = String(payload.whatsappGroupId || "");
+      if (!/^\d{5,32}@g\.us$/.test(whatsappGroupId)) throw new Error(`${action} requires the trusted WhatsApp group ID.`);
+      method = "GET";
+      url = action === "project.list" ? `${endpoint}/api/agent/projects?whatsappGroupId=${encodeURIComponent(whatsappGroupId)}` : `${endpoint}/api/agent/projects/${slug}?whatsappGroupId=${encodeURIComponent(whatsappGroupId)}`;
+    } else if (action === "project.create") {
+      if (payload.visibilityScope !== "whatsapp_group") throw new Error("project.create only supports whatsapp_group visibility.");
+      if (!/^\d{5,32}@g\.us$/.test(String(payload.whatsappGroupId || ""))) throw new Error("project.create requires the trusted WhatsApp group ID.");
+      url = `${endpoint}/api/projects/composition`;
+    } else if (action === "access.update") {
+      url = `${endpoint}/api/projects/${slug}/access`;
+    } else if (action === "details.replace") {
       if (!Array.isArray(payload.details)) throw new Error("details.replace requires a details array.");
     } else if (action === "image.add") {
       url = `${endpoint}/api/projects/${slug}/attachments`;
@@ -60,7 +71,7 @@ process.stdin.on("end", async () => {
       method = action === "memory.update" ? "PATCH" : "DELETE";
       url = `${endpoint}/api/projects/${slug}/memories/${memoryId}`;
     } else {
-      throw new Error("action must be details.replace, image.add, image.update, image.delete, image.setCover, memory.list, memory.create, memory.update or memory.delete.");
+      throw new Error("action must be project.list, project.get, project.create, access.update, details.replace, image.add, image.update, image.delete, image.setCover, memory.list, memory.create, memory.update or memory.delete.");
     }
     const options = { method, headers: { "Content-Type": "application/json", Accept: "application/json" } };
     if (method !== "GET") options.body = JSON.stringify(payload);
