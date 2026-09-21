@@ -27,6 +27,13 @@ function page(response) {
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
   response.end(html);
 }
+function termsPage(response) {
+  const html = fs.readFileSync(path.join(root, "terms.html"), "utf8")
+    .replace('<link rel="stylesheet" href="styles.css">', `<style>${fs.readFileSync(path.join(root, "styles.css"), "utf8")}</style>`)
+    .replace('<link rel="stylesheet" href="terms.css">', `<style>${fs.readFileSync(path.join(root, "terms.css"), "utf8")}</style>`);
+  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
+  response.end(html);
+}
 function authorised(request) {
   const source = request.socket.remoteAddress || "";
   const local = source === "127.0.0.1" || source === "::1" || source === "::ffff:127.0.0.1";
@@ -135,6 +142,41 @@ function updateAttachment(project, attachmentId, input) {
   return projectRecord(db, project.slug);
 }
 
+function replaceAttachment(project, attachmentId, input) {
+  const prior = project.attachments.find((asset) => asset.id === attachmentId);
+  if (!prior) throw new Error("Image not found for this project.");
+  const stored = db.prepare("SELECT storage_key FROM attachments WHERE id = ? AND project_id = ?").get(attachmentId, project.id);
+  if (!stored) throw new Error("Image file record not found for this project.");
+  const mimeType = String(input.mimeType || "");
+  const filename = path.basename(String(input.filename || "upload"));
+  const actor = String(input.actor || "").trim();
+  const reason = String(input.reason || "").trim();
+  const sourceReference = String(input.sourceReference || "").trim();
+  const altText = String(input.altText || prior.altText || "").trim().slice(0, 240);
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  const bytes = Buffer.from(String(input.dataBase64 || ""), "base64");
+  if (!allowed.has(mimeType) || !actor || !reason || !sourceReference || filename.length > 180 || actor.length > 100 || reason.length > 200 || sourceReference.length > 240 || !bytes.length || bytes.length > 5_000_000) throw new Error("A permitted image, filename, actor, reason and sourceReference are required.");
+  const ext = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" }[mimeType];
+  const storageKey = `${crypto.randomUUID()}${ext}`;
+  const filePath = path.join(mediaDir, storageKey);
+  const timestamp = new Date().toISOString();
+  fs.writeFileSync(filePath, bytes, { mode: 0o600 });
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.prepare("UPDATE attachments SET filename = ?, mime_type = ?, bytes = ?, storage_key = ?, alt_text = ? WHERE id = ? AND project_id = ?").run(filename, mimeType, bytes.length, storageKey, altText, attachmentId, project.id);
+    db.prepare("UPDATE projects SET updated_at = ? WHERE id = ?").run(timestamp, project.id);
+    db.prepare("INSERT INTO audit_events (project_id, event_type, actor, reason, source_reference, before_json, after_json, created_at) VALUES (?, 'attachment.replaced', ?, ?, ?, ?, ?, ?)")
+      .run(project.id, actor, reason, sourceReference, JSON.stringify(prior), JSON.stringify({ attachmentId, filename, mimeType, bytes: bytes.length, altText, isCover: Boolean(prior.isCover) }), timestamp);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    fs.rmSync(filePath, { force: true });
+    throw error;
+  }
+  fs.rmSync(path.join(mediaDir, stored.storage_key), { force: true });
+  return projectRecord(db, project.slug);
+}
+
 function deleteAttachment(project, attachmentId, input) {
   const prior = project.attachments.find((asset) => asset.id === attachmentId);
   if (!prior) throw new Error("Image not found for this project.");
@@ -166,6 +208,7 @@ const server = http.createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   try {
     if (request.method === "GET" && pathname === "/api/health") return json(response, 200, { status: "ok", storage: "sqlite" });
+    if (request.method === "GET" && pathname === "/api/editor-access") return json(response, 200, { canEdit: authorised(request) });
     if (request.method === "GET" && pathname === "/api/projects") return json(response, 200, { projects: listProjects(db, { visibilityScope: "regular" }).map(publicProject) });
     const projectMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
     if (request.method === "GET" && projectMatch) { const project = publicProject(projectRecord(db, projectMatch[1])); return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." }); }
@@ -221,6 +264,13 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, { ok: true, project: selectCover(project, coverMatch[2], await parseBody(request)) });
     }
     const attachmentMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/attachments\/([0-9a-f-]{36})$/);
+    const replaceAttachmentMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/attachments\/([0-9a-f-]{36})\/image$/);
+    if (request.method === "PUT" && replaceAttachmentMatch) {
+      if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
+      const project = projectRecord(db, replaceAttachmentMatch[1]);
+      if (!project) return json(response, 404, { error: "Project not found." });
+      return json(response, 200, { ok: true, project: replaceAttachment(project, replaceAttachmentMatch[2], await parseBody(request)) });
+    }
     if ((request.method === "PATCH" || request.method === "DELETE") && attachmentMatch) {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
       const project = projectRecord(db, attachmentMatch[1]);
@@ -237,6 +287,7 @@ const server = http.createServer(async (request, response) => {
     }
     const assetPath = pathname.replace(/^\/[a-z0-9-]+\/(app\.js|styles\.css|detail\.css|ownership\.js)$/, "/$1");
     if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) return page(response);
+    if (request.method === "GET" && pathname === "/terms") return termsPage(response);
     if (request.method === "GET" && staticFiles.has(assetPath)) { const [file, type] = staticFiles.get(assetPath); response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, file)).pipe(response); }
     if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) return publicProject(projectRecord(db, pathname.slice(1))) ? page(response) : json(response, 404, { error: "Project not found." });
     return json(response, 404, { error: "Not found." });

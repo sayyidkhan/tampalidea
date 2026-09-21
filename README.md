@@ -1,6 +1,14 @@
 # TampalIdea
 
-TampalIdea is a private, founder-authorised project ledger. Each project has a shareable staging route at `/<project-slug>` with a brochure-style dossier, contributor composition, audit trail and attached visual references.
+TampalIdea is a founder-authorised project IP ledger for contributor roles, recorded ownership shares and decisions. Regular projects have a public staging route at `/<project-slug>` with a dossier, contributor composition, audit trail and attached visual references; WhatsApp group projects stay scoped to their linked chat.
+
+The landing page explains the ledger through people, history and project context. Its live preview, project count and ownership summaries use only the public regular-project response. Landing styles are scoped to `.landing-page`; project dossiers retain their own layout. The preview handles empty and unavailable records without showing invented data.
+
+The portfolio has List and Table tabs on the right of its header. Both use the same public project response and preserve group visibility restrictions. Table view shows project covers, contributor counts, ownership allocations and update dates; the browser remembers the selected view. Tabs support arrow keys and Home/End, and the table scrolls horizontally on small screens.
+
+The public `/terms` page states the claims policy: a project has a 14-day claim window from its recorded creation timestamp; a claim counts only when its claimant, share or role, and basis are recorded in the project audit trail. After the window, unclaimed ownership defaults to Sayyid Khan unless the audit trail records a different founder-authorised outcome. The page is an operating policy and explicitly does not replace a signed agreement or independent legal advice.
+
+The generated Batam 100 cover and its generation prompt are kept in `assets/batam-100-cover.png` and `assets/batam-100-cover.md`; the live cover is served through the project attachment API.
 
 ## Data and access model
 
@@ -9,6 +17,7 @@ TampalIdea is a private, founder-authorised project ledger. Each project has a s
 - Read routes are public staging views with `noindex,nofollow` headers. Write routes accept only Zo-local callers on loopback or the authenticated private gateway; the public gateway explicitly marks traffic as read-only.
 - Zo agents use the local `http://127.0.0.1:8808` interface directly; no agent token is required or stored.
 - Image uploads accept only JPEG, PNG, WebP and GIF, with a 5 MB limit, and are linked to one project. The first image becomes its cover automatically; a later founder-authorised selection can replace it.
+- The owner-only browser image manager is served at `https://private-apps-sayyidkhan.zo.computer/tampalidea/`. It supports adding, replacing, describing, selecting the cover and deleting images without exposing write controls on the public staging route.
 - Dossier sections and an optional HTTPS-linked live app preview are stored alongside the project and recorded in the audit trail. The project page displays the link and a lazy-loaded live preview beneath it.
 - Each project has a `visibilityScope`: `regular` (the default) or `whatsapp_group`. A group project stores its canonical WhatsApp group JID and is unavailable from the public staging API and URL. Only the Zo-local group-agent endpoints can list or read it, and only when given the exact bound group JID.
 

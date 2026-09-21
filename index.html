@@ -2,16 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex,nofollow"><title>TampalIdea — Project stewardship</title>
+  <meta name="robots" content="noindex,nofollow"><title>TampalIdea — Project IP Ledger</title>
+  <meta name="description" content="Keep a clear project IP ledger of contributors, recorded ownership shares and decisions. Trace how each project takes shape, from its first idea onwards.">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="detail.css">
 </head>
 <body>
   <main class="page">
-    <nav><a class="wordmark" href="./">TAMPAL<span>IDEA</span></a><span>Project IP Ledger</span></nav>
-    <section id="hero" class="hero"><div class="hero-copy"><p class="kicker">Founder brief · contributor clarity</p><h1>Every idea<br>deserves a <i>home.</i></h1><p class="lede">A living, auditable project record for the people, decisions and visual direction behind your next venture.</p><a id="hero-action" class="button" href="#projects">View projects <b>↘</b></a></div><div class="cover-art" aria-hidden="true"><div class="sun"></div><div class="disc disc-a"></div><div class="disc disc-b"></div><div class="art-caption">STEWARD<br>THE IDEA</div></div></section>
-    <section id="projects" class="projects"><div class="section-title"><p class="kicker">Portfolio</p><h2 id="title">Projects</h2></div><div id="project-list" class="project-list"><p class="loading">Opening the ledger…</p></div></section>
+    <nav aria-label="Main navigation"><a class="wordmark" href="./">TAMPAL<span>IDEA</span></a><div class="nav-links landing-only"><a href="#how-it-works">How it works</a><a href="#projects">Open the ledger <span aria-hidden="true">↗</span></a></div><span class="nav-label">Project IP Ledger</span><a id="back-projects" class="back-projects" href="./#projects" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h18"/></svg><span>Back to all projects</span></a></nav>
+    <section id="hero" class="hero">
+      <div class="hero-copy">
+        <p class="kicker"><span class="status-dot" aria-hidden="true"></span> Project IP Ledger</p>
+        <h1>A clear record of<br><i>who owns what.</i></h1>
+        <p class="lede">A shared ledger for your project’s intellectual property. Record its people, ownership shares and decisions, from the first idea onwards.</p>
+        <div class="hero-actions landing-only"><a class="button" href="#projects">Explore the ledger <b aria-hidden="true">↗</b></a><a class="text-link" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a></div>
+        <p class="hero-note landing-only">Ideas evolve. Keep the record.</p>
+      </div>
+      <div class="cover-art"><p class="loading" role="status">Opening a project record…</p></div>
+    </section>
+    <section id="how-it-works" class="ledger-principles landing-only" aria-label="How the ledger works">
+      <article><span class="principle-number">01 / PEOPLE</span><h2>Make ownership clear.</h2><p>Record each contributor, their role and their agreed share in the project.</p></article>
+      <article><span class="principle-number">02 / HISTORY</span><h2>Keep the decisions.</h2><p>Follow what changed, who recorded it and why, in the project’s audit trail.</p></article>
+      <article><span class="principle-number">03 / CONTEXT</span><h2>Connect the whole story.</h2><p>Keep the project brief, visual references and live app alongside its people.</p></article>
+    </section>
+    <section id="projects" class="projects">
+      <div class="section-title">
+        <div><p class="kicker">The project register <span id="project-count"></span></p><h2 id="title">Ideas, on record.</h2><p class="section-description">Explore the people and ownership behind each project.</p></div>
+        <div class="view-toggle" role="tablist" aria-label="Project view">
+          <button id="list-tab" type="button" role="tab" aria-selected="true" aria-controls="project-list" data-view="list"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5h10M7 10h10M7 15h10M3 5h.01M3 10h.01M3 15h.01"/></svg>List</button>
+          <button id="table-tab" type="button" role="tab" aria-selected="false" aria-controls="project-table" tabindex="-1" data-view="table"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="1"/><path d="M3 8h14M3 12.5h14M8 8v9"/></svg>Table</button>
+        </div>
+      </div>
+      <p class="scope-note"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="8" width="12" height="9" rx="2"/><path d="M7 8V5a3 3 0 0 1 6 0v3"/></svg>Showing regular projects. WhatsApp group projects are available through Orin only in their linked group.</p>
+      <div id="project-list" class="project-list" role="tabpanel" aria-labelledby="list-tab" tabindex="0"><p class="loading">Opening the ledger…</p></div>
+      <div id="project-table" class="project-table-wrap" role="tabpanel" aria-labelledby="table-tab" tabindex="0" hidden><p class="loading">Opening the ledger…</p></div>
+    </section>
     <section id="project-detail" class="detail" hidden></section>
+    <footer class="landing-only"><a class="wordmark" href="./">TAMPAL<span>IDEA</span></a><p>People. Ownership. Decisions.</p><a class="terms-link" href="terms">Terms &amp; claims</a><span>Project IP Ledger</span></footer>
   </main>
   <script src="app.js"></script>
 </body>
