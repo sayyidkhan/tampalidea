@@ -18,7 +18,16 @@ const staticFiles = new Map([
   ["/app.js", ["app.js", "application/javascript; charset=utf-8"]], ["/ownership.js", ["ownership.js", "application/javascript; charset=utf-8"]], ["/styles.css", ["styles.css", "text/css; charset=utf-8"]], ["/detail.css", ["detail.css", "text/css; charset=utf-8"]]
 ]);
 
+const publicGroups = new Map([
+  ["shouldi", "120363428601041957@g.us"],
+  ["stocksurfers", "120363420526145722@g.us"]
+]);
+
 function json(response, status, body) { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" }); response.end(JSON.stringify(body)); }
+function groupRequiredPage(response) {
+  response.writeHead(404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
+  response.end("<!doctype html><title>Group required</title><main><h1>404 — group required</h1><p>This registry is group-scoped. Use a valid group link such as <code>?group=shouldi</code> or <code>?group=stocksurfers</code>.</p></main>");
+}
 function page(response) {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8")
     .replace('<link rel="stylesheet" href="styles.css">', `<style>${fs.readFileSync(path.join(root, "styles.css"), "utf8")}</style>`)
@@ -49,8 +58,11 @@ function parseBody(request, limit = 6_500_000) {
   });
 }
 function safeSlug(value) { return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ? value : null; }
-function publicProject(project) {
-  if (!project || project.visibilityScope !== "regular") return null;
+function publicProject(project, groupId = null) {
+  const permitted = groupId
+    ? project?.visibilityScope === "whatsapp_group" && project.whatsappGroupId === groupId
+    : project?.visibilityScope === "regular";
+  if (!permitted) return null;
   const { visibilityScope, whatsappGroupId, audit, ...record } = project;
   return { ...record, audit: audit.map(({ before, after, ...event }) => {
     const clean = (value) => {
@@ -61,6 +73,7 @@ function publicProject(project) {
     return { ...event, before: clean(before), after: clean(after) };
   }) };
 }
+function groupIdFromAlias(url) { return publicGroups.get(url.searchParams.get("group") || "") || null; }
 function groupIdFrom(request) { return normaliseWhatsAppGroupId(new URL(request.url, "http://localhost").searchParams.get("whatsappGroupId")); }
 function attachment(project, input) {
   const mimeType = String(input.mimeType || "");
@@ -205,13 +218,21 @@ function deleteAttachment(project, attachmentId, input) {
 }
 
 const server = http.createServer(async (request, response) => {
-  const pathname = new URL(request.url, "http://localhost").pathname;
+  const url = new URL(request.url, "http://localhost");
+  const pathname = url.pathname;
+  const publicGroupId = groupIdFromAlias(url);
   try {
     if (request.method === "GET" && pathname === "/api/health") return json(response, 200, { status: "ok", storage: "sqlite" });
     if (request.method === "GET" && pathname === "/api/editor-access") return json(response, 200, { canEdit: authorised(request) });
-    if (request.method === "GET" && pathname === "/api/projects") return json(response, 200, { projects: listProjects(db, { visibilityScope: "regular" }).map(publicProject) });
+    if (request.method === "GET" && pathname === "/api/projects") {
+      if (!publicGroupId) return json(response, 404, { error: "Specify a valid group." });
+      return json(response, 200, { projects: listProjects(db, { whatsappGroupId: publicGroupId }).map((project) => publicProject(project, publicGroupId)).filter(Boolean) });
+    }
     const projectMatch = pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
-    if (request.method === "GET" && projectMatch) { const project = publicProject(projectRecord(db, projectMatch[1])); return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." }); }
+    if (request.method === "GET" && projectMatch) {
+      const project = publicGroupId && publicProject(projectRecord(db, projectMatch[1]), publicGroupId);
+      return project ? json(response, 200, { project }) : json(response, 404, { error: "Project not found." });
+    }
     if (request.method === "GET" && pathname === "/api/agent/portfolio") {
       if (!authorised(request)) return json(response, 401, { error: "Unauthorised." });
       return json(response, 200, { projects: listProjects(db, { visibilityScope: "regular" }).map(publicProject) });
@@ -284,16 +305,16 @@ const server = http.createServer(async (request, response) => {
     }
     const mediaMatch = pathname.match(/^\/media\/([0-9a-f-]{36})$/);
     if (request.method === "GET" && mediaMatch) {
-      const record = db.prepare("SELECT mime_type, storage_key FROM attachments WHERE id = ?").get(mediaMatch[1]);
+      const record = publicGroupId && db.prepare("SELECT a.mime_type, a.storage_key FROM attachments a JOIN projects p ON p.id = a.project_id WHERE a.id = ? AND p.visibility_scope = 'whatsapp_group' AND p.whatsapp_group_id = ?").get(mediaMatch[1], publicGroupId);
       if (!record) return json(response, 404, { error: "Image not found." });
       response.writeHead(200, { "Content-Type": record.mime_type, "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff", "X-Robots-Tag": "noindex" });
       return fs.createReadStream(path.join(mediaDir, record.storage_key)).pipe(response);
     }
     const assetPath = pathname.replace(/^\/[a-z0-9-]+\/(app\.js|styles\.css|detail\.css|ownership\.js)$/, "/$1");
-    if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) return page(response);
+    if (request.method === "GET" && (pathname === "/" || pathname === "/index.html")) return publicGroupId ? page(response) : groupRequiredPage(response);
     if (request.method === "GET" && pathname === "/terms") return termsPage(response);
     if (request.method === "GET" && staticFiles.has(assetPath)) { const [file, type] = staticFiles.get(assetPath); response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache", "X-Robots-Tag": "noindex, nofollow" }); return fs.createReadStream(path.join(root, file)).pipe(response); }
-    if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) return publicProject(projectRecord(db, pathname.slice(1))) ? page(response) : json(response, 404, { error: "Project not found." });
+    if (request.method === "GET" && pathname.split("/").filter(Boolean).length === 1 && safeSlug(pathname.slice(1))) return publicGroupId && publicProject(projectRecord(db, pathname.slice(1)), publicGroupId) ? page(response) : json(response, 404, { error: "Project not found." });
     return json(response, 404, { error: "Not found." });
   } catch (error) { return json(response, 400, { error: error.message || "Invalid request." }); }
 });

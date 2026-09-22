@@ -5,16 +5,19 @@
   document.body.classList.add(isProject ? "project-page" : "landing-page");
   const slug = isProject ? pathParts.at(-1) : null;
   const base = `/${(isProject ? pathParts.slice(0, -1) : pathParts).join("/")}`.replace(/\/$/, "");
+  const group = new URLSearchParams(window.location.search).get("group") || "";
+  const groupQuery = group ? `?group=${encodeURIComponent(group)}` : "";
   const api = (suffix) => `${base}/api${suffix}`;
-  document.querySelector(".wordmark").href = `${base}/`;
+  const scoped = (pathname) => `${pathname}${groupQuery}`;
+  document.querySelectorAll(".wordmark").forEach((wordmark) => { wordmark.href = scoped(`${base}/`); });
   if (isProject) {
     const back = document.querySelector("#back-projects");
     back.hidden = false;
-    back.href = `${base}/#projects`;
+    back.href = `${scoped(`${base}/`)}#projects`;
   }
   const escape = (value) => String(value || "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const format = (units) => `${(Number(units) / 100).toFixed(2).replace(/\.00$/, "")}%`;
-  function imageUrl(id) { return `${base || ""}/media/${id}`; }
+  function imageUrl(id) { return scoped(`${base || ""}/media/${id}`); }
   function coverImage(project) { return project.attachments?.find((asset) => asset.isCover) || project.attachments?.[0]; }
   function renderLedgerPreview(project) {
     const target = document.querySelector(".cover-art");
@@ -28,7 +31,7 @@
     const bars = project.contributors.map((person, index) => `<span style="flex:${Math.max(0, Number(person.ownership) || 0)};background:${colours[index % colours.length]}"></span>`).join("");
     const latest = project.audit?.at(-1);
     const date = latest ? new Date(latest.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
-    target.innerHTML = `<div class="preview-top"><span><span class="status-dot" aria-hidden="true"></span> TampalIdea IP ledger</span><span>LIVE RECORD</span></div><div class="preview-stage">${cover ? `<img src="${imageUrl(cover.id)}" alt="">` : '<span class="preview-monogram" aria-hidden="true">TI</span>'}<div class="preview-stage-shade"></div><div class="preview-stage-copy"><p class="kicker">Project record · ${escape(project.slug)}</p><h2>${escape(project.name)}</h2><span>Ownership on record</span></div><div class="preview-file-mark" aria-hidden="true"><i></i><i></i><i></i></div></div><div class="preview-body"><div class="preview-label"><div><p class="kicker">Ownership allocation</p><h3>Who owns this idea</h3></div><span>${project.contributors.length} ${project.contributors.length === 1 ? "owner" : "owners"}</span></div><div class="allocation-bar" aria-hidden="true">${bars}</div><ul class="preview-people">${people}</ul>${latest ? `<div class="preview-audit"><span class="audit-icon" aria-hidden="true">↳</span><div><p class="kicker">Latest record · ${escape(date)}</p><p>${escape(latest.reason)}</p><small>Recorded by ${escape(latest.actor)}</small></div></div>` : '<p class="loading">No decisions recorded yet.</p>'}</div><a class="preview-link" href="${base}/${project.slug}"><span>Open the full project record</span><span aria-hidden="true">↗</span></a>`;
+    target.innerHTML = `<div class="preview-top"><span><span class="status-dot" aria-hidden="true"></span> TampalIdea IP ledger</span><span>LIVE RECORD</span></div><div class="preview-stage">${cover ? `<img src="${imageUrl(cover.id)}" alt="">` : '<span class="preview-monogram" aria-hidden="true">TI</span>'}<div class="preview-stage-shade"></div><div class="preview-stage-copy"><p class="kicker">Project record · ${escape(project.slug)}</p><h2>${escape(project.name)}</h2><span>Ownership on record</span></div><div class="preview-file-mark" aria-hidden="true"><i></i><i></i><i></i></div></div><div class="preview-body"><div class="preview-label"><div><p class="kicker">Ownership allocation</p><h3>Who owns this idea</h3></div><span>${project.contributors.length} ${project.contributors.length === 1 ? "owner" : "owners"}</span></div><div class="allocation-bar" aria-hidden="true">${bars}</div><ul class="preview-people">${people}</ul>${latest ? `<div class="preview-audit"><span class="audit-icon" aria-hidden="true">↳</span><div><p class="kicker">Latest record · ${escape(date)}</p><p>${escape(latest.reason)}</p><small>Recorded by ${escape(latest.actor)}</small></div></div>` : '<p class="loading">No decisions recorded yet.</p>'}</div><a class="preview-link" href="${scoped(`${base}/${project.slug}`)}"><span>Open the full project record</span><span aria-hidden="true">↗</span></a>`;
   }
   function ownershipChart(contributors) {
     const colours = ["#ee6a3c", "#d4ec68", "#13251c", "#8e9d91", "#b4a7d6", "#e6b566"];
@@ -46,7 +49,7 @@
   }
   function projectCard(project) {
     const image = coverImage(project);
-    return `<a class="project-card" href="${base}/${project.slug}"><span class="project-number"><span>PROJECT RECORD</span><span>${String(project.contributors.length).padStart(2, "0")} CONTRIBUTORS</span></span>${image ? `<img src="${imageUrl(image.id)}" alt="${escape(image.altText || project.name)}" loading="lazy">` : `<span class="project-graphic"></span>`}<span class="card-summary"><strong>${escape(project.name)}</strong><small>${escape(project.tagline || "Contributor roles, ownership & project history")}</small></span><span class="card-shares">${project.contributors.map((person) => `<span>${escape(person.name)} <b>${format(person.ownership)}</b></span>`).join("")}</span><span class="card-open">Open project record <b aria-hidden="true">↗</b></span></a>`;
+    return `<a class="project-card" href="${scoped(`${base}/${project.slug}`)}"><span class="project-number"><span>PROJECT RECORD</span><span>${String(project.contributors.length).padStart(2, "0")} CONTRIBUTORS</span></span>${image ? `<img src="${imageUrl(image.id)}" alt="${escape(image.altText || project.name)}" loading="lazy">` : `<span class="project-graphic"></span>`}<span class="card-summary"><strong>${escape(project.name)}</strong><small>${escape(project.tagline || "Contributor roles, ownership & project history")}</small></span><span class="card-shares">${project.contributors.map((person) => `<span>${escape(person.name)} <b>${format(person.ownership)}</b></span>`).join("")}</span><span class="card-open">Open project record <b aria-hidden="true">↗</b></span></a>`;
   }
   function projectTable(projects) {
     const rows = projects.map((project) => {
@@ -54,7 +57,7 @@
       const date = new Date(project.updatedAt);
       const updated = Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
       const ownership = project.contributors.map((person) => `<li><span>${escape(person.name)}</span><b>${format(person.ownership)}</b></li>`).join("");
-      return `<tr><th scope="row"><a class="table-project" href="${base}/${project.slug}">${image ? `<img src="${imageUrl(image.id)}" alt="" loading="lazy">` : '<span class="table-project-placeholder" aria-hidden="true"></span>'}<span><strong>${escape(project.name)}</strong><small>${escape(project.tagline || "Founder composition & project story")}</small></span><span class="table-arrow" aria-hidden="true">↗</span></a></th><td class="table-people">${String(project.contributors.length).padStart(2, "0")}</td><td><ul class="table-ownership">${ownership}</ul></td><td class="table-updated">${updated}</td></tr>`;
+      return `<tr><th scope="row"><a class="table-project" href="${scoped(`${base}/${project.slug}`)}">${image ? `<img src="${imageUrl(image.id)}" alt="" loading="lazy">` : '<span class="table-project-placeholder" aria-hidden="true"></span>'}<span><strong>${escape(project.name)}</strong><small>${escape(project.tagline || "Founder composition & project story")}</small></span><span class="table-arrow" aria-hidden="true">↗</span></a></th><td class="table-people">${String(project.contributors.length).padStart(2, "0")}</td><td><ul class="table-ownership">${ownership}</ul></td><td class="table-updated">${updated}</td></tr>`;
     }).join("");
     return `<table class="project-table"><caption class="sr-only">Projects, people, ownership and last update</caption><thead><tr><th scope="col">Project</th><th scope="col">People</th><th scope="col">Ownership</th><th scope="col">Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
@@ -173,7 +176,7 @@
       if (isProject) {
         const loadProject = async () => {
           const [projectResponse, accessResponse] = await Promise.all([
-            fetch(api(`/projects/${slug}`), { headers: { Accept: "application/json" } }),
+            fetch(api(`/projects/${slug}${groupQuery}`), { headers: { Accept: "application/json" } }),
             fetch(api("/editor-access"), { headers: { Accept: "application/json" } })
           ]);
           if (!projectResponse.ok) throw new Error("Project unavailable");
@@ -184,7 +187,7 @@
         await loadProject();
       } else {
         setupViewToggle();
-        const response = await fetch(api("/projects"), { headers: { Accept: "application/json" } });
+        const response = await fetch(api(`/projects${groupQuery}`), { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error("Ledger unavailable");
         const projects = (await response.json()).projects;
         renderLedgerPreview(projects[0]);
